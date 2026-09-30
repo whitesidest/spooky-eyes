@@ -1,0 +1,71 @@
+{% extends "devices/base.html" %}
+{% block content %}
+<section class="panel fleet">
+  <h2>All boards</h2>
+  <div class="row">
+    <label>Theme
+      <select id="all-theme">
+        <option value="">—</option>
+        {% for t in default_themes %}<option value="{{ t.id }}">{{ t.name }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Mood
+      <select id="all-mood">
+        <option value="">—</option>
+        <option>neutral</option><option>angry</option><option>surprised</option><option>sleepy</option><option>asleep</option>
+      </select>
+    </label>
+    <button data-all-action="blink">Blink</button>
+    <button data-all-action="startle">Startle</button>
+    <button data-all-action="roll">Eye roll</button>
+    <button data-all-state='{"on": true}'>All on</button>
+    <button data-all-state='{"on": false}' class="ghost">All off</button>
+  </div>
+  {% if scenes %}
+  <h3>Scenes</h3>
+  <div class="row">
+    {% for s in scenes %}<button class="scene" data-scene="{{ s.pk }}">{{ s.name }}{% if s.group %} <small>· {{ s.group.name }}</small>{% endif %}</button>{% endfor %}
+  </div>
+  {% endif %}
+</section>
+
+<section class="panel">
+  <div class="row between">
+    <h2>Boards <span id="count" class="muted"></span></h2>
+    <div class="row">
+      <form id="add-form" class="row">
+        <input name="host" placeholder="IP or hostname" required aria-label="Board host">
+        <button type="submit">Add</button>
+      </form>
+      <button id="scan">Scan network</button>
+    </div>
+  </div>
+  <div id="cards" class="cards"><p class="muted">Loading…</p></div>
+</section>
+
+<template id="card-tpl">
+  <article class="card">
+    <header>
+      <span class="dot"></span>
+      <h3 class="name"></h3>
+      <label class="switch" title="Power"><input type="checkbox" class="on"><span></span></label>
+    </header>
+    <p class="meta muted"></p>
+    <label>Brightness <input type="range" class="brightness" min="0" max="255"></label>
+    <div class="grid2">
+      <label>Theme <select class="theme"></select></label>
+      <label>Mood <select class="mood"></select></label>
+    </div>
+    <label class="check"><input type="checkbox" class="autonomous"> Idle animation</label>
+    <div class="row actions">
+      <button data-action="blink">Blink</button>
+      <button data-action="wink_left">Wink L</button>
+      <button data-action="wink_right">Wink R</button>
+      <button data-action="startle">Startle</button>
+      <button data-action="roll">Roll</button>
+    </div>
+    <p class="stats muted"></p>
+  </article>
+</template>
+{% endblock %}
+{% block scripts %}<script>SpookyEyes.dashboard();</script>{% endblock %}

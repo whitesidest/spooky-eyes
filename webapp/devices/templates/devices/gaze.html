@@ -1,0 +1,26 @@
+{% extends "devices/base.html" %}
+{% block title %}Gaze pad · Spooky Eyes{% endblock %}
+{% block content %}
+<section class="panel gaze">
+  <div class="row between">
+    <h2>Gaze pad</h2>
+    <label>Target
+      <select id="target">
+        <option value='{"all": true}'>All boards</option>
+        {% for g in groups %}<option value='{"group": {{ g.pk }}}'>Group: {{ g.name }}</option>{% endfor %}
+        {% for d in devices %}<option value='{"device": "{{ d.device_id }}"}'>{{ d.name }}</option>{% endfor %}
+      </select>
+    </label>
+  </div>
+  <p class="muted">Drag to steer the eyes. Let go and they drift back to idling after a moment.</p>
+  <div id="pad" class="pad" role="application" aria-label="Gaze pad"><div id="puck" class="puck"></div></div>
+  <div class="row">
+    <button data-action="blink">Blink</button>
+    <button data-action="startle">Startle</button>
+    <button data-action="release">Release</button>
+    <label class="check"><input type="checkbox" id="hold"> Hold gaze after release</label>
+  </div>
+  <p id="readout" class="muted">x 0.00 · y 0.00</p>
+</section>
+{% endblock %}
+{% block scripts %}<script>SpookyEyes.gazePad();</script>{% endblock %}

@@ -1,0 +1,10 @@
+.pio/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+tools/preview/build/
+tools/preview/out/
+firmware/include/secrets.h
+webapp/.venv/
+webapp/db.sqlite3

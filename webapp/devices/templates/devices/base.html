@@ -1,0 +1,24 @@
+{% load static %}<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Spooky Eyes{% endblock %}</title>
+  <link rel="stylesheet" href="{% static 'devices/app.css' %}">
+</head>
+<body>
+  <header class="top">
+    <a class="brand" href="{% url 'dashboard' %}"><span class="brand-eye" aria-hidden="true"></span>Spooky Eyes</a>
+    <nav>
+      <a href="{% url 'dashboard' %}" {% if request.resolver_match.url_name == 'dashboard' %}aria-current="page"{% endif %}>Boards</a>
+      <a href="{% url 'gaze' %}" {% if request.resolver_match.url_name == 'gaze' %}aria-current="page"{% endif %}>Gaze pad</a>
+      <a href="{% url 'admin:index' %}">Groups &amp; scenes</a>
+    </nav>
+  </header>
+  <main>{% block content %}{% endblock %}</main>
+  <div id="toast" role="status" aria-live="polite"></div>
+  {% csrf_token %}
+  <script src="{% static 'devices/app.js' %}"></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,88 @@
+{
+  "config": {
+    "flow_title": "{name}",
+    "step": {
+      "user": {
+        "title": "Add Spooky Eyes",
+        "description": "Enter the address of a Spooky Eyes board (e.g. spooky-eyes-a1b2c3.local or its IP).",
+        "data": {"host": "Host", "port": "Port"}
+      },
+      "zeroconf_confirm": {
+        "title": "Spooky Eyes found",
+        "description": "Add **{name}** at {host} to Home Assistant?"
+      }
+    },
+    "error": {
+      "cannot_connect": "Couldn't reach the board. Check the address and that it's on the network."
+    },
+    "abort": {
+      "already_configured": "This board is already configured.",
+      "cannot_connect": "Couldn't reach the discovered board.",
+      "invalid_discovery": "The discovered service didn't advertise a device id."
+    }
+  },
+  "entity": {
+    "select": {
+      "theme": {"name": "Theme"},
+      "mood": {
+        "name": "Mood",
+        "state": {
+          "neutral": "Neutral",
+          "angry": "Angry",
+          "surprised": "Surprised",
+          "sleepy": "Sleepy",
+          "asleep": "Asleep"
+        }
+      }
+    },
+    "switch": {"autonomous": {"name": "Idle animation"}},
+    "number": {"pupil": {"name": "Pupil dilation"}},
+    "button": {
+      "blink": {"name": "Blink"},
+      "wink_left": {"name": "Wink left"},
+      "wink_right": {"name": "Wink right"},
+      "startle": {"name": "Startle"},
+      "roll": {"name": "Eye roll"},
+      "auto_pupil": {"name": "Auto pupil"}
+    },
+    "sensor": {
+      "rssi": {"name": "Wi-Fi signal"},
+      "fps": {"name": "Frame rate"},
+      "uptime": {"name": "Uptime"}
+    }
+  },
+  "selector": {
+    "action": {
+      "options": {
+        "blink": "Blink",
+        "wink_left": "Wink left",
+        "wink_right": "Wink right",
+        "look": "Look (x, y, duration)",
+        "release": "Release gaze",
+        "startle": "Startle",
+        "roll": "Eye roll"
+      }
+    }
+  },
+  "services": {
+    "look": {
+      "name": "Look",
+      "description": "Point the eyes at a spot. Holds for `duration` seconds (0 = until released or idle animation takes over).",
+      "fields": {
+        "x": {"name": "X", "description": "-1 = far left, 1 = far right (viewer's perspective)."},
+        "y": {"name": "Y", "description": "-1 = up, 1 = down."},
+        "duration": {"name": "Duration", "description": "Seconds to hold the gaze; 0 holds until released."}
+      }
+    },
+    "action": {
+      "name": "Action",
+      "description": "Play an animation on the targeted eyes.",
+      "fields": {
+        "action": {"name": "Action", "description": "What to do."},
+        "x": {"name": "X", "description": "Gaze x for look."},
+        "y": {"name": "Y", "description": "Gaze y for look."},
+        "duration": {"name": "Duration", "description": "Seconds, for look."}
+      }
+    }
+  }
+}
