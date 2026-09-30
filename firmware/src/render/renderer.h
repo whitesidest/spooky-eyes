@@ -79,6 +79,13 @@ class Renderer {
   float pupilR_ = 0;
   float glowK_ = 0;
   float emissive_ = 1;
+  // Per-eye colour set (left eye = theme, right eye may use ThemeSpec::right).
+  Rgb irisInner_, irisOuter_, pupilColor_, glowColor_;
+  float glowAmount_ = 0, haze_ = 0;
+  // Sub-eye cluster (spider): screen-space centres and scales for this eye.
+  int clusterN_ = 0;
+  float clusterX_[kMaxClusterEyes], clusterY_[kMaxClusterEyes], clusterS_[kMaxClusterEyes];
+  float sparkleK_[2];
   int swirlOffset_ = 0;
   bool hueOn_ = false;
   float hue_[9];  // iris hue-rotation matrix (row-major)

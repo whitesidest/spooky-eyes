@@ -147,6 +147,42 @@ void Renderer::begin(const EyeState& s) {
   float pulse = t.glowPulse > 0 ? 0.78f + 0.22f * sinf(kTwoPi * t.glowPulse * s.time) : 1.0f;
   glowK_ = s.glow * pulse;
   emissive_ = t.glowAmount > 0 ? lerp(0.25f, 1.0f, clamp01(s.glow)) : 1.0f;
+
+  // Per-eye colour set: the right panel may override the theme.
+  irisInner_ = t.irisInner;
+  irisOuter_ = t.irisOuter;
+  pupilColor_ = t.pupilColor;
+  glowColor_ = t.glowColor;
+  glowAmount_ = t.glowAmount;
+  haze_ = 0;
+  if (s.mirror && t.right.enabled) {
+    const EyeVariant& v = t.right;
+    irisInner_ = v.irisInner;
+    irisOuter_ = v.irisOuter;
+    pupilColor_ = v.pupilColor;
+    glowColor_ = v.glowColor;
+    if (v.pupilScale > 0) pupilR_ *= v.pupilScale;
+    if (v.glowScale > 0) glowAmount_ *= v.glowScale;
+    haze_ = clamp01(v.haze);
+  }
+
+  // Sub-eye cluster: centres slide a little with the gaze, sizes come from the layout.
+  clusterN_ = 0;
+  if (t.cluster > 0) {
+    const ClusterEye* lay = clusterLayout(t.cluster);
+    clusterN_ = t.cluster > kMaxClusterEyes ? kMaxClusterEyes : t.cluster;
+    for (int i = 0; i < clusterN_; ++i) {
+      clusterX_[i] = cx_ + (s.mirror ? -lay[i].x : lay[i].x);
+      clusterY_[i] = cy_ + lay[i].y;
+      clusterS_[i] = lay[i].scale;
+    }
+  }
+  // Twinkle phases for the sparkle highlights (different per eye).
+  {
+    float ph = s.mirror ? 1.9f : 0.0f;
+    sparkleK_[0] = 0.55f + 0.45f * sinf(s.time * 2.7f + ph);
+    sparkleK_[1] = 0.55f + 0.45f * sinf(s.time * 3.9f + 2.1f + ph);
+  }
   float swirl = fmodf(t.irisSwirl * s.time, kTwoPi);
   swirlOffset_ = (int)(swirl * ThemeCache::kIrisAngles / kTwoPi);
   hueOn_ = t.hueSpin != 0;
@@ -181,13 +217,14 @@ void Renderer::buildFireField() {
     fireR0_ = t.fireInner - 12.0f;
     fireRStep_ = (t.fireOuter + 10.0f - fireR0_) / (kFireRadii - 1);
     const float fs = t.fireScale;
+    const float rs = fs * 0.09f * (t.fireStretch > 0 ? t.fireStretch : 1.0f);
     for (int ai = 0; ai < kFireAngles; ++ai) {
       float a = ai * kTwoPi / kFireAngles - kPi;
       float ux = cosf(a), uy = sinf(a);
       for (int ri = 0; ri < kFireRadii; ++ri) {
         float r = fireR0_ + ri * fireRStep_;
         fire_[ri * kFireAngles + ai] =
-            fbm3(ux * fs * 3.0f + 11.0f + z, uy * fs * 3.0f, r * fs * 0.09f - s_.time * t.fireSpeed);
+            fbm3(ux * fs * 3.0f + 11.0f + z, uy * fs * 3.0f, r * rs - s_.time * t.fireSpeed);
       }
     }
   } else {
@@ -236,8 +273,11 @@ float Renderer::fireAt(float fx, float fy, float ux, float uy, float r) const {
     float base = 1.0f - smoothstep(18.0f, t.fireOuter, rr);
     if (base <= 0) return 0;
     n = lerp(lerp(p[0], p[1], tx), lerp(p[kFireCells], p[kFireCells + 1], tx), ty);
-    float core = 0.55f * (1.0f - smoothstep(0.0f, 40.0f, rr));
-    return clamp01(base * base * 1.5f * (n * 2.5f - 0.8f) + core);
+    // Ember bed: a wide, always-hot pool at the bottom of the socket.
+    float ex = dx * 0.55f, ey = dy < 0 ? dy * 1.2f : dy * 1.8f;
+    float er = sqrtf(ex * ex + ey * ey);
+    float core = 0.75f * (1.0f - smoothstep(6.0f, 46.0f, er)) * (0.7f + 0.3f * n);
+    return clamp01(base * base * 1.6f * (n * 2.5f - 0.75f) + core);
   }
   float dx = fx - cx_, dy = fy - cy_;
   float up = dy < 0 ? dy * 0.45f : dy;
@@ -277,8 +317,24 @@ Renderer::Col Renderer::shade(int px, int py) const {
     if (lidA >= 1.0f) return lid;
   }
 
-  // Iris-relative coordinates (foreshortened).
-  const float dx = (fx - cx_) * squashX_, dy = (fy - cy_) * squashY_;
+  // Iris-relative coordinates (foreshortened). With a cluster, every pixel belongs to the
+  // nearest sub-eye and is shaded in that eye's scaled local space.
+  float dx = (fx - cx_) * squashX_, dy = (fy - cy_) * squashY_;
+  if (clusterN_ > 0) {
+    int best = 0;
+    float bestD = 1e30f;
+    for (int i = 0; i < clusterN_; ++i) {
+      float ex = fx - clusterX_[i], ey = fy - clusterY_[i];
+      float d = (ex * ex + ey * ey) / (clusterS_[i] * clusterS_[i]);
+      if (d < bestD) {
+        bestD = d;
+        best = i;
+      }
+    }
+    const float invS = 1.0f / clusterS_[best];
+    dx = (fx - clusterX_[best]) * invS;
+    dy = (fy - clusterY_[best]) * invS;
+  }
   const float r = sqrtf(dx * dx + dy * dy) + 1e-4f;
   const float inv = 1.0f / r;
   const float ux = dx * inv, uy = dy * inv;
@@ -318,8 +374,8 @@ Renderer::Col Renderer::shade(int px, int py) const {
       float band = 0.5f + 0.5f * sinf(a * 2.0f + r * 0.16f - s_.time * t.spiralSpeed);
       tr = lerp(tr, smoothstep(0.3f, 0.7f, band), t.spiral);
     }
-    Col iris = {lerp(t.irisInner.r, t.irisOuter.r, tr), lerp(t.irisInner.g, t.irisOuter.g, tr),
-                lerp(t.irisInner.b, t.irisOuter.b, tr)};
+    Col iris = {lerp(irisInner_.r, irisOuter_.r, tr), lerp(irisInner_.g, irisOuter_.g, tr),
+                lerp(irisInner_.b, irisOuter_.b, tr)};
     if (cache_->fibre_) {
       int ri = (int)r;
       if (ri >= cache_->irisRadii_) ri = cache_->irisRadii_ - 1;
@@ -369,7 +425,7 @@ Renderer::Col Renderer::shade(int px, int py) const {
   float pupilA = 0;  // coverage of the pupil shape; inverted themes apply it after the glow
   float pupilEdge = 1e9f;
   if (t.pupilShape != PupilShape::None &&
-      (t.pupilInvert || r < pupilR_ * 1.6f + t.irisRadius * t.slitHeight + 2)) {
+      (t.pupilInvert || r < pupilR_ * 1.8f + t.irisRadius * t.slitHeight + 2)) {
     float edge;  // signed distance in px, <0 inside
     if (t.pupilShape == PupilShape::Round) {
       edge = r - pupilR_;
@@ -407,6 +463,61 @@ Renderer::Col Renderer::shade(int px, int py) const {
       float c = x < -2.0f * rr ? -2.0f * rr : (x > 0 ? 0 : x);
       x -= c;
       edge = -sqrtf(x * x + y * y) * (y > 0 ? 1.0f : -1.0f);
+    } else if (t.pupilShape == PupilShape::Star) {
+      // Inigo Quilez's five-point star SDF; pupilR = outer radius.
+      const float k1x = 0.809016994f, k1y = -0.587785252f;
+      const float rr = pupilR_, rf = 0.45f;
+      float x = fabsf(dx), y = -dy;
+      float d1 = k1x * x + k1y * y;
+      if (d1 > 0) {
+        x -= 2.0f * d1 * k1x;
+        y -= 2.0f * d1 * k1y;
+      }
+      float d2 = -k1x * x + k1y * y;
+      if (d2 > 0) {
+        x += 2.0f * d2 * k1x;
+        y -= 2.0f * d2 * k1y;
+      }
+      x = fabsf(x);
+      y -= rr;
+      float bax = rf * -k1y, bay = rf * k1x - 1.0f;
+      float h = (x * bax + y * bay) / (bax * bax + bay * bay);
+      h = h < 0 ? 0 : (h > rr ? rr : h);
+      float px2 = x - bax * h, py2 = y - bay * h;
+      edge = sqrtf(px2 * px2 + py2 * py2) * ((y * bax - x * bay) > 0 ? 1.0f : -1.0f);
+    } else if (t.pupilShape == PupilShape::Clover) {
+      // Shamrock: three leaves (circles) around the centre plus a short stem.
+      const float leaf = pupilR_ * 0.55f, off = pupilR_ * 0.48f;
+      float ax = dx, ay = dy + off;  // top leaf
+      float bx = dx - off * 0.866f, by = dy - off * 0.5f;
+      float cx2 = dx + off * 0.866f, cy2 = dy - off * 0.5f;
+      float da = sqrtf(ax * ax + ay * ay) - leaf;
+      float db = sqrtf(bx * bx + by * by) - leaf;
+      float dc = sqrtf(cx2 * cx2 + cy2 * cy2) - leaf;
+      edge = da < db ? da : db;
+      if (dc < edge) edge = dc;
+      // Stem: thin rounded bar hanging down.
+      float sx = dx + 0.32f * (dy - off * 0.3f), sy = dy - off * 0.3f;
+      float qx = fabsf(sx) - pupilR_ * 0.11f, qy = fabsf(sy) - pupilR_ * 0.62f;
+      float ox = qx > 0 ? qx : 0, oy = qy > 0 ? qy : 0;
+      float m = qx > qy ? qx : qy;
+      float ds = sqrtf(ox * ox + oy * oy) + (m < 0 ? m : 0);
+      if (sy > 0 && ds < edge) edge = ds;
+    } else if (t.pupilShape == PupilShape::Cross) {
+      // Two bars rotated 45 degrees: an "X". pupilR = half-length, slitHeight = thickness ratio.
+      const float u = (dx + dy) * 0.70710678f, v = (dx - dy) * 0.70710678f;
+      const float hl = pupilR_, hw = pupilR_ * (t.slitHeight > 0 ? t.slitHeight : 0.22f);
+      float qx = fabsf(u) - hl, qy = fabsf(v) - hw;
+      float ox = qx > 0 ? qx : 0, oy = qy > 0 ? qy : 0;
+      float m = qx > qy ? qx : qy;
+      float d1 = sqrtf(ox * ox + oy * oy) + (m < 0 ? m : 0);
+      qx = fabsf(v) - hl;
+      qy = fabsf(u) - hw;
+      ox = qx > 0 ? qx : 0;
+      oy = qy > 0 ? qy : 0;
+      m = qx > qy ? qx : qy;
+      float d2 = sqrtf(ox * ox + oy * oy) + (m < 0 ? m : 0);
+      edge = d1 < d2 ? d1 : d2;
     } else {
       float q = dy / (t.slitHeight * t.irisRadius);
       float halfW = pupilR_ * (1.0f - q * q);
@@ -415,26 +526,26 @@ Renderer::Col Renderer::shade(int px, int py) const {
     pupilEdge = edge;
     pupilA = 1.0f - smoothstep(-1.0f, 1.0f, edge);
     if (!t.pupilInvert && pupilA > 0) {
-      col.r = lerp(col.r, t.pupilColor.r, pupilA);
-      col.g = lerp(col.g, t.pupilColor.g, pupilA);
-      col.b = lerp(col.b, t.pupilColor.b, pupilA);
+      col.r = lerp(col.r, pupilColor_.r, pupilA);
+      col.g = lerp(col.g, pupilColor_.g, pupilA);
+      col.b = lerp(col.b, pupilColor_.b, pupilA);
     }
   }
 
   // --- Glow ---
-  if (t.glowAmount > 0) {
-    float g = t.glowAmount * glowK_ * expNeg((r * r) / (t.glowRadius * t.glowRadius));
-    col.r += t.glowColor.r * g;
-    col.g += t.glowColor.g * g;
-    col.b += t.glowColor.b * g;
+  if (glowAmount_ > 0) {
+    float g = glowAmount_ * glowK_ * expNeg((r * r) / (t.glowRadius * t.glowRadius));
+    col.r += glowColor_.r * g;
+    col.g += glowColor_.g * g;
+    col.b += glowColor_.b * g;
   }
 
   // --- Specular (light from upper-left for both eyes) ---
   if (t.specular > 0) {
-    float hx = fx - (cx_ - t.irisRadius * 0.32f), hy = fy - (cy_ - t.irisRadius * 0.38f);
+    float hx = dx + t.irisRadius * 0.32f, hy = dy + t.irisRadius * 0.38f;
     float hr = t.irisRadius * 0.13f;
     float h = expNeg((hx * hx + hy * hy) / (hr * hr));
-    float h2x = fx - (cx_ + t.irisRadius * 0.3f), h2y = fy - (cy_ + t.irisRadius * 0.28f);
+    float h2x = dx - t.irisRadius * 0.3f, h2y = dy - t.irisRadius * 0.28f;
     float h2r = t.irisRadius * 0.06f;
     h += 0.5f * expNeg((h2x * h2x + h2y * h2y) / (h2r * h2r));
     h *= t.specular * 0.85f;
@@ -442,14 +553,34 @@ Renderer::Col Renderer::shade(int px, int py) const {
     col.g += h;
     col.b += h;
   }
+  if (t.sparkle > 0 && r < t.irisRadius) {
+    // Twinkling four-point stars: a diamond core with thin rays along the axes.
+    float s1x = fabsf(dx - t.irisRadius * 0.42f), s1y = fabsf(dy + t.irisRadius * 0.05f);
+    float s2x = fabsf(dx + t.irisRadius * 0.15f), s2y = fabsf(dy - t.irisRadius * 0.5f);
+    float w = t.irisRadius * 0.045f;
+    float m1 = s1x < s1y ? s1x : s1y, m2 = s2x < s2y ? s2x : s2y;
+    float a1 = expNeg((s1x + s1y) / (w * 3.2f) + m1 / (w * 0.35f));
+    float a2 = expNeg((s2x + s2y) / (w * 2.2f) + m2 / (w * 0.35f));
+    float h = t.sparkle * (a1 * sparkleK_[0] + 0.8f * a2 * sparkleK_[1]);
+    col.r += h;
+    col.g += h;
+    col.b += h;
+  }
+  if (haze_ > 0) {
+    // Cataract: a milky veil over the iris and pupil.
+    float v = haze_ * (1.0f - smoothstep(t.irisRadius * 0.7f, t.irisRadius + 4.0f, r));
+    col.r = lerp(col.r, 0.80f, v);
+    col.g = lerp(col.g, 0.82f, v);
+    col.b = lerp(col.b, 0.78f, v);
+  }
 
   // Cut-out themes: everything outside the shape goes dark, with a little light bleeding past the edge.
   if (t.pupilInvert && t.pupilShape != PupilShape::None) {
     float out = 1.0f - pupilA;
     float bleed = pupilEdge > 0 ? 0.3f * glowK_ * expNeg(pupilEdge / 7.0f) : 0;
-    col.r = lerp(col.r, t.pupilColor.r + t.glowColor.r * bleed, out);
-    col.g = lerp(col.g, t.pupilColor.g + t.glowColor.g * bleed, out);
-    col.b = lerp(col.b, t.pupilColor.b + t.glowColor.b * bleed, out);
+    col.r = lerp(col.r, pupilColor_.r + glowColor_.r * bleed, out);
+    col.g = lerp(col.g, pupilColor_.g + glowColor_.g * bleed, out);
+    col.b = lerp(col.b, pupilColor_.b + glowColor_.b * bleed, out);
   }
 
   // Spherical shading toward the rim, lid shadows.

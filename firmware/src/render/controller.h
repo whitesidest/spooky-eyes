@@ -42,6 +42,8 @@ class EyeController {
   float randRange(float a, float b) { return a + (b - a) * rand01(); }
   void scheduleBlink();
   void pickSaccade();
+  void pickTarget(float* x, float* y);
+  float interval(float perMinute);
 
   const ThemeSpec* theme_ = nullptr;
   uint32_t rng_;
@@ -61,6 +63,11 @@ class EyeController {
   float blinkT_[2] = {-1, -1};  // elapsed time of the running blink per eye, -1 = none
   float startleT_ = -1;
   float rollT_ = -1;
+
+  // Idle events and independent right-eye gaze (theme personality extras).
+  float scanT_ = -1, nextScan_ = 20, scanDir_ = 1, scanY_ = 0;
+  float dozeT_ = -1, nextDoze_ = 15;
+  float gx2_ = 0, gy2_ = 0, tx2_ = 0, ty2_ = 0, nextSaccade2_ = 1;
 
   float lidTop_ = 0.1f, lidBot_ = 0.05f, slant_ = 0, pupil_ = 0.5f, glow_ = 1;
   float pupilPhase_[2] = {0, 0};
