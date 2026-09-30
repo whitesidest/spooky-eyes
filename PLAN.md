@@ -119,16 +119,21 @@ Added (v1.1), grouped by `category` (reported in `/api/info` themes):
 
 | Category | Themes |
 |---|---|
-| halloween | `fire`, `sauron`, `zombie` (milky, bloodshot, twitchy), `demon` (goat bar pupil, flames), `werewolf` (amber), `vampire` (crimson glow), `ghost` (hollow glowing ring), `jack_o_lantern` (flame-filled carved triangle) |
-| creatures | `cat`, `dragon` (gold slit, scaly lids), `owl` (huge pupils, barely moves) |
-| sci-fi | `alien`, `terminator`, `robot` (blue lens, aperture pupil) |
-| holidays | `frost` (winter ice), `valentine` (heart pupil, heartbeat glow) |
-| fun | `hypnotic` (spinning spiral), `rainbow` (hue-cycling iris) |
+| halloween | `fire` (flaming pits, no pupil), `sauron` (lidless, slow searchlight sweeps), `zombie` (bloodshot; right eye is a milky, wall-eyed cataract), `demon` (goat bar pupil, flames), `werewolf` (amber eyeshine), `vampire` (crimson glow), `ghost` (luminous ring with ectoplasm wisps), `jack_o_lantern` (flame-filled carved triangle), `spider` (four glossy red orbs per panel), `dead` (cartoon X_X, sickly green) |
+| creatures | `cat` (slow trusting blinks), `dragon` (gold slit, scaly lids), `owl` (huge pupils, locks on), `snake` (lidless copper slit, never blinks), `chameleon` (scaly turrets, each eye wanders independently) |
+| sci-fi | `alien` (eyes drift out of sync), `terminator` (target-acquisition sweeps), `robot` (blue lens, aperture pupil) |
+| holidays | `frost` (winter ice, glints), `valentine` (heart pupil, heartbeat glow), `st_patricks` (shamrock pupil, gold rim), `easter` (pastel candy iris), `fireworks` (star core, red/white/blue sparks) |
+| fun | `hypnotic` (spinning spiral), `rainbow` (hue-cycling iris), `puppy` (droopy lids that doze off and jolt awake), `anime` (huge glossy iris, twinkling stars) |
 | classic | `human` |
 
-Ideas next: `snake`, `spider` (cluster of small eyes), `st_patricks` (clover pupil), `easter`,
-`fireworks` (4th of July), `sleepy_puppy`, `anime` sparkle eyes, `pumpkin_king`; JSON custom
-themes from HA / the web controller.
+Theme extras (all optional, zero = off): `sparkle`, `lidDroop`, `blinkSpeed`, `independence`
+(right eye picks its own targets while idle; both converge on `look`), `scanRate` (slow full-width
+sweeps per minute), `dozeRate` (lids sag shut then snap open), `cluster` (sub-eyes per panel from a
+built-in layout), `pupilDilate` (startle dilation), `fireStretch` (radial streaks), and `right`
+(an `EyeVariant`: iris/pupil/glow colours, pupil and glow scale, cataract `haze`, wall-eye `lazy`).
+Pupil shapes: round, slit, bar, heart, triangle, star, clover, cross (X), none.
+
+Ideas next: `pumpkin_king`, JSON custom themes from HA / the web controller.
 
 ## Phases
 

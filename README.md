@@ -28,10 +28,15 @@ pio device monitor
 3. Later updates can go over the network:
    `pio run -e dualeye_ota -t upload --upload-port spooky-eyes-xxxxxx.local`
 
-Themes (19): Halloween — fire, Sauron, zombie, demon, werewolf, vampire, ghost, jack-o'-lantern; creatures — cat, dragon, owl; sci-fi — alien, Terminator, robot; holidays — frost, valentine; fun — hypnotic, rainbow; classic — human. Preview them without hardware:
+Themes (28): Halloween — fire, Sauron, zombie (one dead eye), demon, werewolf, vampire, ghost,
+jack-o'-lantern, spider (eight eyes), dead (cartoon X_X); creatures — cat, dragon, owl, snake, chameleon (independent
+eyes); sci-fi — alien, Terminator, robot; holidays — frost, valentine, St. Patrick's, Easter,
+fireworks; fun — hypnotic, rainbow, sleepy puppy, anime; classic — human. Preview them without
+hardware:
 
 ```bash
-python3 tools/preview/render.py all --frames 60   # -> tools/preview/out/*.gif + contact sheet
+python3 tools/preview/render.py all --frames 60            # -> tools/preview/out/*.gif + contact sheet
+python3 tools/preview/render.py sauron --mood angry --action startle --stills   # one theme, one action
 ```
 
 ## Home Assistant integration

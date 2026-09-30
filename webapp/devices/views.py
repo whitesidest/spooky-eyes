@@ -31,6 +31,15 @@ DEFAULT_THEMES = [
         ("valentine", "Valentine", "holidays"),
         ("rainbow", "Rainbow", "fun"),
         ("robot", "Robot", "sci-fi"),
+        ("snake", "Snake", "creatures"),
+        ("spider", "Spider", "halloween"),
+        ("chameleon", "Chameleon", "creatures"),
+        ("puppy", "Sleepy Puppy", "fun"),
+        ("anime", "Anime", "fun"),
+        ("st_patricks", "St. Patrick's", "holidays"),
+        ("easter", "Easter", "holidays"),
+        ("fireworks", "Fireworks", "holidays"),
+        ("dead", "Dead (X_X)", "halloween"),
     )
 ]
 CATEGORY_ORDER = ["halloween", "creatures", "sci-fi", "holidays", "fun", "classic"]
