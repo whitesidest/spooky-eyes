@@ -34,7 +34,7 @@ static void writePair(const std::string& path, const std::vector<uint16_t>& l, c
 
 int main(int argc, char** argv) {
   if (argc < 3) {
-    fprintf(stderr, "usage: preview <theme|all> <outdir> [frames=1] [fps=20] [mood=neutral]\n");
+    fprintf(stderr, "usage: preview <theme|all> <outdir> [frames=1] [fps=20] [mood=neutral] [action]\n");
     return 1;
   }
   const std::string which = argv[1], out = argv[2];
@@ -45,6 +45,9 @@ int main(int argc, char** argv) {
     fprintf(stderr, "unknown mood %s\n", argv[5]);
     return 1;
   }
+  // Optional action fired one fifth of the way in: blink, wink_left, wink_right, startle, roll.
+  const std::string action = argc > 6 ? argv[6] : "";
+  const int actionFrame = frames / 5;
   std::vector<uint16_t> left(kSize * kSize), right(kSize * kSize);
   for (int ti = 0; ti < themeCount(); ++ti) {
     const ThemeSpec* theme = themeAt(ti);
@@ -57,10 +60,18 @@ int main(int argc, char** argv) {
     Renderer ren[2];
     ren[0].setCache(&cache);
     ren[1].setCache(&cache);
-    // Settle lids/pupils before the first captured frame.
-    for (int i = 0; i < 40; ++i) ctl.update(0.05f);
+    // Settle lids/pupils (and get past the first scheduled blink) before capturing.
+    for (int i = 0; i < 64; ++i) ctl.update(0.05f);
     double renderMs = 0;
     for (int f = 0; f < frames; ++f) {
+      if (f == actionFrame && !action.empty()) {
+        if (action == "blink") ctl.blink();
+        else if (action == "wink_left") ctl.wink(0);
+        else if (action == "wink_right") ctl.wink(1);
+        else if (action == "startle") ctl.startle();
+        else if (action == "roll") ctl.roll();
+        else if (action == "look") ctl.look(0.8f, -0.3f, 0);
+      }
       ctl.update(1.0f / fps);
       auto t0 = std::chrono::steady_clock::now();
       ren[0].begin(ctl.eye(0));
