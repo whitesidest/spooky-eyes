@@ -164,3 +164,35 @@ class PageTests(TestCase):
         data = self.client.get("/api/devices").json()
         self.assertEqual(data["devices"][0]["device_id"], "000000000001")
         self.assertFalse(data["devices"][0]["online"])
+
+
+class PreviewTests(ApiTestCase):
+    def test_board_without_preview(self):
+        make("000000000001", "10.0.0.1")
+        self.assertEqual(self.client.get("/api/devices/000000000001/preview").status_code, 404)
+
+    @mock.patch("devices.views.client.get_preview", return_value=(b"\x89PNG...", "image/png"))
+    def test_simulated_board_proxies_picture(self, get_preview):
+        d = make("000000000001", "127.0.0.1")
+        d.port, d.info = 8081, {"preview": "/sim/frame.png"}
+        d.save()
+        resp = self.client.get("/api/devices/000000000001/preview")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp["Content-Type"], "image/png")
+        self.assertEqual(resp.content, b"\x89PNG...")
+        get_preview.assert_called_once_with("127.0.0.1", 8081, "/sim/frame.png")
+
+    def test_rejects_non_path_preview(self):
+        d = make("000000000001", "10.0.0.1")
+        d.info = {"preview": "//evil.example/x.png"}
+        d.save()
+        self.assertEqual(self.client.get("/api/devices/000000000001/preview").status_code, 404)
+
+    def test_gaze_page_lists_previews(self):
+        d = make("000000000001", "127.0.0.1")
+        d.info = {"preview": "/sim/frame.png"}
+        d.save()
+        make("000000000002", "10.0.0.2")
+        resp = self.client.get("/gaze/")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.context["gaze_config"]["previews"], ["000000000001"])

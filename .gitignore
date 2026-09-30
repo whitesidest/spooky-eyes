@@ -8,3 +8,4 @@ tools/preview/out/
 firmware/include/secrets.h
 webapp/.venv/
 webapp/db.sqlite3
+tools/sim/build/

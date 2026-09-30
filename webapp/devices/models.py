@@ -34,6 +34,14 @@ class Device(models.Model):
         return self.info.get("themes", [])
 
     @property
+    def preview_path(self):
+        """Live-picture path the board advertises (simulators only), or None."""
+        path = self.info.get("preview")
+        if isinstance(path, str) and path.startswith("/") and not path.startswith("//"):
+            return path
+        return None
+
+    @property
     def moods(self):
         return self.info.get("moods", ["neutral", "angry", "surprised", "sleepy", "asleep"])
 

@@ -1,6 +1,6 @@
 import json
 
-from django.http import JsonResponse
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, render
 from django.views.decorators.http import require_http_methods, require_POST
 
@@ -82,6 +82,7 @@ def _device_json(d: Device):
         "state": d.last_state,
         "themes": d.themes or DEFAULT_THEMES,
         "moods": d.moods,
+        "preview": bool(d.preview_path),
     }
 
 
@@ -97,9 +98,17 @@ def dashboard(request):
 
 
 def gaze(request):
+    devices = Device.objects.all()
+    groups = Group.objects.prefetch_related("devices")
     return render(request, "devices/gaze.html", {
-        "devices": Device.objects.all(),
-        "groups": Group.objects.all(),
+        "devices": devices,
+        "groups": groups,
+        # For the live view: which boards each target covers, and which boards can show a picture.
+        "gaze_config": {
+            "previews": [d.device_id for d in devices if d.preview_path],
+            "names": {d.device_id: d.name for d in devices},
+            "groups": {str(g.pk): [d.device_id for d in g.devices.all()] for g in groups},
+        },
     })
 
 
@@ -125,6 +134,19 @@ def api_devices(request):
     except client.DeviceError as err:
         return _error(f"could not reach board: {err}", 502)
     return JsonResponse({"device": _device_json(device)}, status=201)
+
+
+def api_device_preview(request, device_id):
+    device = get_object_or_404(Device, device_id=device_id)
+    if not device.preview_path:
+        return _error("this board has no live preview", 404)
+    try:
+        body, content_type = client.get_preview(device.host, device.port, device.preview_path)
+    except client.DeviceError as err:
+        return _error(str(err), 502)
+    response = HttpResponse(body, content_type=content_type)
+    response["Cache-Control"] = "no-store"
+    return response
 
 
 @require_http_methods(["DELETE"])

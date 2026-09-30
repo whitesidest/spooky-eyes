@@ -52,3 +52,16 @@ and return `{"results": {"<device_id>": {"ok": true, "state": {...}} | {"ok": fa
 # then add 127.0.0.1 port 8081 / 8082 on the dashboard
 .venv/bin/python manage.py test devices
 ```
+
+## Simulated boards
+
+`fake_device.py` runs the real firmware eye renderer and behaviour engine (built into
+`tools/sim/build/libspookysim.so` with g++ on first run), so the dashboard and gaze pad show
+live eyes that blink, startle, roll and follow the pad exactly as the hardware will:
+
+```bash
+.venv/bin/python fake_device.py --port 8081 --id a1b2c3000001 --name "Porch Eyes (sim)" --theme sauron
+```
+
+Then add `127.0.0.1:8081` from the dashboard (host `127.0.0.1`, or POST `/api/devices` with a port).
+Simulators advertise `"preview": "/sim/frame.png"` in `/api/info`; real boards don't send pictures.

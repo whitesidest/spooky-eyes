@@ -30,6 +30,37 @@ const SpookyEyes = (() => {
     return data;
   }
 
+  // Confirms a fan-out that fully succeeded, e.g. "Blink → 2 boards".
+  function confirm(label) {
+    return (data) => {
+      const results = Object.values(data.results || {});
+      if (results.length && results.every((r) => r.ok))
+        toast(`${label} → ${results.length} board${results.length === 1 ? "" : "s"}`);
+      return data;
+    };
+  }
+  const LABELS = { blink: "Blink", wink_left: "Wink left", wink_right: "Wink right", startle: "Startle", roll: "Eye roll", release: "Release" };
+  const label = (action) => LABELS[action] || action;
+
+  // Keeps an <img> showing a board's live picture: fetch the next frame as soon as one arrives
+  // (capped at ~12 fps), pausing while the tab is hidden. Returns a stop() function.
+  function livePreview(img, deviceId) {
+    let stopped = false;
+    let timer;
+    const next = () => {
+      if (stopped) return;
+      if (document.hidden) return (timer = setTimeout(next, 500));
+      img.src = `/api/devices/${deviceId}/preview?t=${Date.now()}`;
+    };
+    img.onload = () => (timer = setTimeout(next, 80));
+    img.onerror = () => (timer = setTimeout(next, 2000));
+    next();
+    return () => {
+      stopped = true;
+      clearTimeout(timer);
+    };
+  }
+
   const sendState = (target, state) => api("/api/state", { target, state }).then(report);
   const sendAction = (target, action) => api("/api/action", { target, ...action }).then(report);
   const fail = (err) => toast(err.message, true);
@@ -103,8 +134,15 @@ const SpookyEyes = (() => {
       card.querySelector(".mood").addEventListener("change", (e) => apply({ mood: e.target.value }));
       card.querySelector(".autonomous").addEventListener("change", (e) => apply({ autonomous: e.target.checked }));
       card.querySelectorAll("[data-action]").forEach((b) =>
-        b.addEventListener("click", () => sendAction(target, { action: b.dataset.action }).catch(fail))
+        b.addEventListener("click", () =>
+          sendAction(target, { action: b.dataset.action }).then(confirm(label(b.dataset.action))).catch(fail)
+        )
       );
+      if (d.preview) {
+        const img = card.querySelector(".live");
+        img.hidden = false;
+        livePreview(img, d.device_id);
+      }
       return card;
     }
 
@@ -168,7 +206,9 @@ const SpookyEyes = (() => {
       if (e.target.value) sendState(all, { mood: e.target.value }).then(afterFleet).catch(fail);
     });
     document.querySelectorAll("[data-all-action]").forEach((b) =>
-      b.addEventListener("click", () => sendAction(all, { action: b.dataset.allAction }).catch(fail))
+      b.addEventListener("click", () =>
+        sendAction(all, { action: b.dataset.allAction }).then(confirm(label(b.dataset.allAction))).catch(fail)
+      )
     );
     document.querySelectorAll("[data-all-state]").forEach((b) =>
       b.addEventListener("click", () => sendState(all, JSON.parse(b.dataset.allState)).then(afterFleet).catch(fail))
@@ -195,6 +235,34 @@ const SpookyEyes = (() => {
     const readout = document.getElementById("readout");
     const targetSel = document.getElementById("target");
     const target = () => JSON.parse(targetSel.value);
+    const config = JSON.parse(document.getElementById("gaze-config").textContent);
+    const live = document.getElementById("live");
+    let stops = [];
+
+    // Show the live eyes of every simulated board the current target covers.
+    function showLive() {
+      stops.forEach((stop) => stop());
+      stops = [];
+      live.innerHTML = "";
+      const t = target();
+      const ids = t.all ? Object.keys(config.names) : t.group !== undefined ? config.groups[String(t.group)] || [] : [t.device];
+      const shown = ids.filter((id) => config.previews.includes(id));
+      for (const id of shown) {
+        const fig = document.createElement("figure");
+        const img = document.createElement("img");
+        img.className = "live";
+        img.alt = `Live view of ${config.names[id]}`;
+        const cap = document.createElement("figcaption");
+        cap.textContent = config.names[id];
+        fig.append(img, cap);
+        live.appendChild(fig);
+        stops.push(livePreview(img, id));
+      }
+      if (!shown.length && ids.length)
+        live.innerHTML = '<p class="muted">Real boards don\'t send a picture — watch the eyes themselves.</p>';
+    }
+    targetSel.addEventListener("change", showLive);
+    showLive();
     const HZ = 15;
     let pos = { x: 0, y: 0 };
     let dragging = false;
@@ -248,7 +316,7 @@ const SpookyEyes = (() => {
     document.querySelectorAll("[data-action]").forEach((b) =>
       b.addEventListener("click", () => {
         if (b.dataset.action === "release") place(0, 0), (dirty = false);
-        sendAction(target(), { action: b.dataset.action }).catch(fail);
+        sendAction(target(), { action: b.dataset.action }).then(confirm(label(b.dataset.action))).catch(fail);
       })
     );
     place(0, 0);

@@ -30,6 +30,17 @@ def _request(method: str, host: str, port: int, path: str, json=None) -> dict:
         raise DeviceError(f"{host}: invalid JSON") from err
 
 
+def get_preview(host: str, port: int, path: str) -> tuple[bytes, str]:
+    """Fetch a board's live picture; returns (body, content type)."""
+    try:
+        resp = httpx.get(_url(host, port, path), timeout=settings.DEVICE_TIMEOUT)
+    except httpx.HTTPError as err:
+        raise DeviceError(f"{host}: {err.__class__.__name__}") from err
+    if resp.status_code >= 400:
+        raise DeviceError(f"{host}: HTTP {resp.status_code}")
+    return resp.content, resp.headers.get("content-type", "application/octet-stream")
+
+
 def get_info(host: str, port: int = 80) -> dict:
     return _request("GET", host, port, "/api/info")
 

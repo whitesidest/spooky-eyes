@@ -90,3 +90,9 @@ input[type=checkbox] { accent-color: var(--accent); width: 18px; height: 18px; }
   main { padding: 12px; }
   .grid2 { grid-template-columns: 1fr; }
 }
+
+/* Live eye views (simulated boards advertise a preview picture). */
+.live { display: block; width: 100%; aspect-ratio: 500 / 240; object-fit: contain; background: #000; border-radius: 10px; }
+.live-grid { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); margin-bottom: 12px; }
+.live-grid figure { margin: 0; }
+.live-grid figcaption { font-size: 12px; color: var(--muted); margin-top: 4px; }
