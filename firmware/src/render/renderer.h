@@ -80,6 +80,8 @@ class Renderer {
   float glowK_ = 0;
   float emissive_ = 1;
   int swirlOffset_ = 0;
+  bool hueOn_ = false;
+  float hue_[9];  // iris hue-rotation matrix (row-major)
   float fireR0_ = 0, fireRStep_ = 1;
   float* fire_ = nullptr;  // rising: [kFireCells^2], radial: [kFireRadii][kFireAngles]
   float lidTop_[kSize], lidBot_[kSize];

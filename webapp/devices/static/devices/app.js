@@ -40,11 +40,29 @@ const SpookyEyes = (() => {
     const tpl = document.getElementById("card-tpl");
     const byId = new Map();
 
+    const CATEGORY_ORDER = ["halloween", "creatures", "sci-fi", "holidays", "fun", "classic"];
+    // Theme options grouped by category, Halloween first; boards without categories stay flat.
+    function themeOptions(themes) {
+      const rank = (c) => (CATEGORY_ORDER.includes(c) ? CATEGORY_ORDER.indexOf(c) : CATEGORY_ORDER.length);
+      return themes
+        .map((t, i) => ({ value: t.id, label: t.name, cat: t.category, i }))
+        .sort((a, b) => rank(a.cat) - rank(b.cat) || a.i - b.i)
+        .map((t) => ({ value: t.value, label: t.label, group: t.cat ? t.cat[0].toUpperCase() + t.cat.slice(1) : null }));
+    }
+
     function fillSelect(sel, options, current) {
       const key = options.map((o) => o.value).join("|");
       if (sel.dataset.key !== key) {
         sel.innerHTML = "";
-        for (const o of options) sel.add(new Option(o.label, o.value));
+        let group = null;
+        for (const o of options) {
+          if (o.group && (!group || group.label !== o.group)) {
+            group = document.createElement("optgroup");
+            group.label = o.group;
+            sel.appendChild(group);
+          }
+          (o.group ? group : sel).appendChild(new Option(o.label, o.value));
+        }
         sel.dataset.key = key;
       }
       if (current !== undefined && document.activeElement !== sel) sel.value = current;
@@ -59,7 +77,7 @@ const SpookyEyes = (() => {
       card.querySelector(".on").checked = !!s.on;
       const bri = card.querySelector(".brightness");
       if (document.activeElement !== bri && s.brightness !== undefined) bri.value = s.brightness;
-      fillSelect(card.querySelector(".theme"), d.themes.map((t) => ({ value: t.id, label: t.name })), s.theme);
+      fillSelect(card.querySelector(".theme"), themeOptions(d.themes), s.theme);
       fillSelect(card.querySelector(".mood"), d.moods.map((m) => ({ value: m, label: m })), s.mood);
       card.querySelector(".autonomous").checked = !!s.autonomous;
       const stats = [];

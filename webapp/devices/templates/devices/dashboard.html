@@ -6,7 +6,7 @@
     <label>Theme
       <select id="all-theme">
         <option value="">—</option>
-        {% for t in default_themes %}<option value="{{ t.id }}">{{ t.name }}</option>{% endfor %}
+        {% for category, themes in theme_groups %}<optgroup label="{{ category|title }}">{% for t in themes %}<option value="{{ t.id }}">{{ t.name }}</option>{% endfor %}</optgroup>{% endfor %}
       </select>
     </label>
     <label>Mood

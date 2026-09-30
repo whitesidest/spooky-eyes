@@ -9,7 +9,19 @@ import json
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-THEMES = [{"id": t, "name": t.title()} for t in ("human", "cat", "fire", "alien", "sauron", "terminator")]
+# Same list/categories the firmware reports (firmware/src/render/themes.cpp).
+THEMES = [
+    {"id": i, "name": n, "category": c}
+    for i, n, c in (
+        ("human", "Human", "classic"), ("cat", "Cat", "creatures"), ("fire", "Fire", "halloween"),
+        ("alien", "Alien", "sci-fi"), ("sauron", "Sauron", "halloween"), ("terminator", "Terminator", "sci-fi"),
+        ("dragon", "Dragon", "creatures"), ("zombie", "Zombie", "halloween"), ("demon", "Demon", "halloween"),
+        ("werewolf", "Werewolf", "halloween"), ("vampire", "Vampire", "halloween"), ("ghost", "Ghost", "halloween"),
+        ("jack_o_lantern", "Jack-o'-Lantern", "halloween"), ("hypnotic", "Hypnotic", "fun"),
+        ("owl", "Owl", "creatures"), ("frost", "Frost", "holidays"), ("valentine", "Valentine", "holidays"),
+        ("rainbow", "Rainbow", "fun"), ("robot", "Robot", "sci-fi"),
+    )
+]
 MOODS = ["neutral", "angry", "surprised", "sleepy", "asleep"]
 ACTIONS = {"blink", "wink_left", "wink_right", "look", "release", "startle", "roll"}
 

@@ -8,9 +8,52 @@ from . import client, services
 from .models import Device, Group, Scene
 from .validation import ValidationError, clean_action, clean_state
 
+# Fallback when no board has reported its theme list yet (mirrors firmware/src/render/themes.cpp).
 DEFAULT_THEMES = [
-    {"id": t, "name": t.title()} for t in ("human", "cat", "fire", "alien", "sauron", "terminator")
+    {"id": i, "name": n, "category": c}
+    for i, n, c in (
+        ("human", "Human", "classic"),
+        ("cat", "Cat", "creatures"),
+        ("fire", "Fire", "halloween"),
+        ("alien", "Alien", "sci-fi"),
+        ("sauron", "Sauron", "halloween"),
+        ("terminator", "Terminator", "sci-fi"),
+        ("dragon", "Dragon", "creatures"),
+        ("zombie", "Zombie", "halloween"),
+        ("demon", "Demon", "halloween"),
+        ("werewolf", "Werewolf", "halloween"),
+        ("vampire", "Vampire", "halloween"),
+        ("ghost", "Ghost", "halloween"),
+        ("jack_o_lantern", "Jack-o'-Lantern", "halloween"),
+        ("hypnotic", "Hypnotic", "fun"),
+        ("owl", "Owl", "creatures"),
+        ("frost", "Frost", "holidays"),
+        ("valentine", "Valentine", "holidays"),
+        ("rainbow", "Rainbow", "fun"),
+        ("robot", "Robot", "sci-fi"),
+    )
 ]
+CATEGORY_ORDER = ["halloween", "creatures", "sci-fi", "holidays", "fun", "classic"]
+
+
+def theme_groups(themes):
+    """Group themes by category (for <optgroup>s), in a stable, Halloween-first order."""
+    groups = {}
+    for t in themes:
+        groups.setdefault(t.get("category") or "other", []).append(t)
+    order = CATEGORY_ORDER + sorted(set(groups) - set(CATEGORY_ORDER))
+    return [(c, groups[c]) for c in order if c in groups]
+
+
+def fleet_themes(devices):
+    """Union of every board's themes (first-seen order), falling back to the built-in list."""
+    seen, out = set(), []
+    for d in devices:
+        for t in d.themes:
+            if t.get("id") not in seen:
+                seen.add(t.get("id"))
+                out.append(t)
+    return out or DEFAULT_THEMES
 
 
 def _body(request):
@@ -49,7 +92,7 @@ def dashboard(request):
         "devices": Device.objects.all(),
         "groups": Group.objects.all(),
         "scenes": Scene.objects.all(),
-        "default_themes": DEFAULT_THEMES,
+        "theme_groups": theme_groups(fleet_themes(Device.objects.all())),
     })
 
 

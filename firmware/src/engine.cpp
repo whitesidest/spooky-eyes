@@ -315,6 +315,7 @@ void writeInfo(JsonObject out) {
     JsonObject t = themes.add<JsonObject>();
     t["id"] = eyes::themeAt(i)->id;
     t["name"] = eyes::themeAt(i)->name;
+    t["category"] = eyes::themeAt(i)->category ? eyes::themeAt(i)->category : "other";
   }
   JsonArray moods = out["moods"].to<JsonArray>();
   for (int i = 0; i < eyes::kMoodCount; ++i) moods.add(eyes::moodName((eyes::Mood)i));

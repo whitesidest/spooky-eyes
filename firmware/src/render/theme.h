@@ -8,7 +8,8 @@ struct Rgb {
   float r, g, b;
 };
 
-enum class PupilShape : uint8_t { Round, Slit, None };
+// Bar = goat/demon horizontal; Triangle = carved jack-o'-lantern eye (use with pupilInvert).
+enum class PupilShape : uint8_t { Round, Slit, None, Bar, Heart, Triangle };
 enum class FireMode : uint8_t { None, Rising, Radial };
 
 struct ThemeSpec {
@@ -65,6 +66,13 @@ struct ThemeSpec {
   float blinkRate;    // blinks per minute (0 = never; lidless themes flicker instead)
   float jitter;       // micro-saccade amplitude, px
   bool snap;          // mechanical instant moves instead of eased
+
+  // Optional extras (zero = off); keep new fields at the end so older themes can omit them.
+  float spiral;       // 0..1 hypnotic spiral bands across the iris (irisInner/irisOuter)
+  float spiralSpeed;  // rad/s
+  float hueSpin;      // iris hue rotations per second
+  bool pupilInvert;   // pupilColor fills everything OUTSIDE the pupil shape (cut-out look)
+  const char* category;  // grouping for UIs: classic, halloween, creatures, sci-fi, holidays, fun
 };
 
 const ThemeSpec* themeById(const char* id);

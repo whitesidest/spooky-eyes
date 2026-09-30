@@ -115,7 +115,20 @@ brain). The device itself serves only the JSON API; all UI lives here.
 | `sauron` | lidless fiery radial iris, black slit pupil | slow searching sweeps, never blinks |
 | `terminator` | red glowing core in a metal lens housing, scanlines | mechanical snaps, flickers instead of blinks |
 
-Later: dragon, zombie, hypnotic spiral, pumpkin; JSON custom themes from HA.
+Added (v1.1), grouped by `category` (reported in `/api/info` themes):
+
+| Category | Themes |
+|---|---|
+| halloween | `fire`, `sauron`, `zombie` (milky, bloodshot, twitchy), `demon` (goat bar pupil, flames), `werewolf` (amber), `vampire` (crimson glow), `ghost` (hollow glowing ring), `jack_o_lantern` (flame-filled carved triangle) |
+| creatures | `cat`, `dragon` (gold slit, scaly lids), `owl` (huge pupils, barely moves) |
+| sci-fi | `alien`, `terminator`, `robot` (blue lens, aperture pupil) |
+| holidays | `frost` (winter ice), `valentine` (heart pupil, heartbeat glow) |
+| fun | `hypnotic` (spinning spiral), `rainbow` (hue-cycling iris) |
+| classic | `human` |
+
+Ideas next: `snake`, `spider` (cluster of small eyes), `st_patricks` (clover pupil), `easter`,
+`fireworks` (4th of July), `sleepy_puppy`, `anime` sparkle eyes, `pumpkin_king`; JSON custom
+themes from HA / the web controller.
 
 ## Phases
 

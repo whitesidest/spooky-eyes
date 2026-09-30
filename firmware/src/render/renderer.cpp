@@ -149,6 +149,15 @@ void Renderer::begin(const EyeState& s) {
   emissive_ = t.glowAmount > 0 ? lerp(0.25f, 1.0f, clamp01(s.glow)) : 1.0f;
   float swirl = fmodf(t.irisSwirl * s.time, kTwoPi);
   swirlOffset_ = (int)(swirl * ThemeCache::kIrisAngles / kTwoPi);
+  hueOn_ = t.hueSpin != 0;
+  if (hueOn_) {
+    // Rotate hue about the grey axis.
+    float a = fmodf(t.hueSpin * s.time, 1.0f) * kTwoPi;
+    float c = cosf(a), sn = sinf(a) * 0.57735027f, k = (1.0f - c) / 3.0f;
+    float m0 = c + k, m1 = k - sn, m2 = k + sn;
+    const float m[9] = {m0, m1, m2, m2, m0, m1, m1, m2, m0};
+    memcpy(hue_, m, sizeof m);
+  }
 
   if (t.lids) {
     // Lids follow the gaze a little, like real ones.
@@ -291,6 +300,11 @@ Renderer::Col Renderer::shade(int px, int py) const {
   if (irisA > 0) {
     float span = t.irisRadius - pupilR_;
     float tr = clamp01((r - pupilR_) / (span > 1 ? span : 1));
+    if (t.spiral > 0) {
+      float a = fastAtan2(uy, ux);
+      float band = 0.5f + 0.5f * sinf(a * 2.0f + r * 0.16f - s_.time * t.spiralSpeed);
+      tr = lerp(tr, smoothstep(0.3f, 0.7f, band), t.spiral);
+    }
     Col iris = {lerp(t.irisInner.r, t.irisOuter.r, tr), lerp(t.irisInner.g, t.irisOuter.g, tr),
                 lerp(t.irisInner.b, t.irisOuter.b, tr)};
     if (cache_->fibre_) {
@@ -303,6 +317,12 @@ Renderer::Col Renderer::shade(int px, int py) const {
       iris.r *= k;
       iris.g *= k;
       iris.b *= k;
+    }
+    if (hueOn_) {
+      Col h = {hue_[0] * iris.r + hue_[1] * iris.g + hue_[2] * iris.b,
+               hue_[3] * iris.r + hue_[4] * iris.g + hue_[5] * iris.b,
+               hue_[6] * iris.r + hue_[7] * iris.g + hue_[8] * iris.b};
+      iris = h;
     }
     float lim = smoothstep(t.irisRadius - t.limbusWidth, t.irisRadius, r) * 0.9f;
     col.r = lerp(col.r, lerp(iris.r, t.limbus.r, lim) * emissive_, irisA);
@@ -333,20 +353,58 @@ Renderer::Col Renderer::shade(int px, int py) const {
   }
 
   // --- Pupil ---
-  if (t.pupilShape != PupilShape::None && r < pupilR_ + t.irisRadius * t.slitHeight + 2) {
-    float edge;  // signed distance-ish, <0 inside
+  float pupilA = 0;  // coverage of the pupil shape; inverted themes apply it after the glow
+  float pupilEdge = 1e9f;
+  if (t.pupilShape != PupilShape::None &&
+      (t.pupilInvert || r < pupilR_ * 1.6f + t.irisRadius * t.slitHeight + 2)) {
+    float edge;  // signed distance in px, <0 inside
     if (t.pupilShape == PupilShape::Round) {
       edge = r - pupilR_;
+    } else if (t.pupilShape == PupilShape::Bar) {
+      // Rounded horizontal box: half-height pupilR, half-width slitHeight * irisRadius.
+      float hw = t.slitHeight * t.irisRadius, hh = pupilR_;
+      float qx = fabsf(dx) - hw + hh, qy = fabsf(dy);
+      float ox = qx > 0 ? qx : 0;
+      edge = (qx > 0 ? sqrtf(ox * ox + qy * qy) : qy) - hh;
+    } else if (t.pupilShape == PupilShape::Heart) {
+      // Inigo Quilez's heart SDF; unit heart spans y 0..~1.1 with y up.
+      const float sc = pupilR_ * 1.7f;
+      float x = fabsf(dx) / sc, y = -dy / sc + 0.55f;
+      float d;
+      if (x + y > 1.0f) {
+        float ax = x - 0.25f, ay = y - 0.75f;
+        d = sqrtf(ax * ax + ay * ay) - 0.35355339f;
+      } else {
+        float bx = x, by = y - 1.0f;
+        float m = 0.5f * (x + y > 0 ? x + y : 0);
+        float cx = x - m, cy = y - m;
+        float d2 = bx * bx + by * by, c2 = cx * cx + cy * cy;
+        d = sqrtf(d2 < c2 ? d2 : c2) * (x - y > 0 ? 1.0f : -1.0f);
+      }
+      edge = d * sc;
+    } else if (t.pupilShape == PupilShape::Triangle) {
+      // Inigo Quilez's equilateral triangle SDF, pointing up; pupilR = circumradius-ish.
+      const float k = 1.7320508f, rr = pupilR_;
+      float x = fabsf(dx) - rr, y = -dy + rr / k;
+      if (x + k * y > 0) {
+        float nx = (x - k * y) * 0.5f, ny = (-k * x - y) * 0.5f;
+        x = nx;
+        y = ny;
+      }
+      float c = x < -2.0f * rr ? -2.0f * rr : (x > 0 ? 0 : x);
+      x -= c;
+      edge = -sqrtf(x * x + y * y) * (y > 0 ? 1.0f : -1.0f);
     } else {
       float q = dy / (t.slitHeight * t.irisRadius);
       float halfW = pupilR_ * (1.0f - q * q);
       edge = fabsf(dx) - (halfW > 0 ? halfW : -1.0f);
     }
-    float a = 1.0f - smoothstep(-1.0f, 1.0f, edge);
-    if (a > 0) {
-      col.r = lerp(col.r, t.pupilColor.r, a);
-      col.g = lerp(col.g, t.pupilColor.g, a);
-      col.b = lerp(col.b, t.pupilColor.b, a);
+    pupilEdge = edge;
+    pupilA = 1.0f - smoothstep(-1.0f, 1.0f, edge);
+    if (!t.pupilInvert && pupilA > 0) {
+      col.r = lerp(col.r, t.pupilColor.r, pupilA);
+      col.g = lerp(col.g, t.pupilColor.g, pupilA);
+      col.b = lerp(col.b, t.pupilColor.b, pupilA);
     }
   }
 
@@ -370,6 +428,15 @@ Renderer::Col Renderer::shade(int px, int py) const {
     col.r += h;
     col.g += h;
     col.b += h;
+  }
+
+  // Cut-out themes: everything outside the shape goes dark, with a little light bleeding past the edge.
+  if (t.pupilInvert && t.pupilShape != PupilShape::None) {
+    float out = 1.0f - pupilA;
+    float bleed = pupilEdge > 0 ? 0.3f * glowK_ * expNeg(pupilEdge / 7.0f) : 0;
+    col.r = lerp(col.r, t.pupilColor.r + t.glowColor.r * bleed, out);
+    col.g = lerp(col.g, t.pupilColor.g + t.glowColor.g * bleed, out);
+    col.b = lerp(col.b, t.pupilColor.b + t.glowColor.b * bleed, out);
   }
 
   // Spherical shading toward the rim, lid shadows.
