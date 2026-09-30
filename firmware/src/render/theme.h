@@ -10,7 +10,8 @@ struct Rgb {
 
 // Bar = goat/demon horizontal; Triangle = carved jack-o'-lantern eye (use with pupilInvert).
 enum class PupilShape : uint8_t { Round, Slit, None, Bar, Heart, Triangle };
-enum class FireMode : uint8_t { None, Rising, Radial };
+// Pit = a socket full of flames: hot core low down, tall tongues rising, dark rim.
+enum class FireMode : uint8_t { None, Rising, Radial, Pit };
 
 struct ThemeSpec {
   const char* id;

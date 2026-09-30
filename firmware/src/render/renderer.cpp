@@ -191,11 +191,13 @@ void Renderer::buildFireField() {
       }
     }
   } else {
+    // Pit flames are stretched vertically into tall tongues.
+    const float sy = t.fire == FireMode::Pit ? 0.45f : 1.0f;
     for (int gy = 0; gy < kFireCells; ++gy) {
       for (int gx = 0; gx < kFireCells; ++gx) {
         float fx = gx * kFireGrid, fy = gy * kFireGrid;
         fire_[gy * kFireCells + gx] =
-            fbm3(fx * t.fireScale + z, fy * t.fireScale + s_.time * t.fireSpeed, s_.time * 0.35f);
+            fbm3(fx * t.fireScale + z, (fy * t.fireScale + s_.time * t.fireSpeed) * sy, s_.time * 0.35f);
       }
     }
   }
@@ -222,15 +224,26 @@ float Renderer::fireAt(float fx, float fy, float ux, float uy, float r) const {
     n = lerp(n0, n1, tr);
     return clamp01(band * (n * 2.3f - 0.85f) + band * 0.12f);
   }
+  float gx = fx / kFireGrid, gy = fy / kFireGrid;
+  int x0 = (int)gx, y0 = (int)gy;
+  float tx = gx - x0, ty = gy - y0;
+  const float* p = fire_ + y0 * kFireCells + x0;
+  if (t.fire == FireMode::Pit) {
+    // Source sits low in the socket; flames reach far upward and barely downward.
+    float dx = fx - cx_, dy = fy - (cy_ + 38.0f);
+    float v = dy < 0 ? dy * 0.5f : dy * 1.7f;
+    float rr = sqrtf(dx * dx + v * v);
+    float base = 1.0f - smoothstep(18.0f, t.fireOuter, rr);
+    if (base <= 0) return 0;
+    n = lerp(lerp(p[0], p[1], tx), lerp(p[kFireCells], p[kFireCells + 1], tx), ty);
+    float core = 0.55f * (1.0f - smoothstep(0.0f, 40.0f, rr));
+    return clamp01(base * base * 1.5f * (n * 2.5f - 0.8f) + core);
+  }
   float dx = fx - cx_, dy = fy - cy_;
   float up = dy < 0 ? dy * 0.45f : dy;
   float rr = sqrtf(dx * dx + up * up);
   float base = smoothstep(t.fireInner - 8.0f, t.fireInner + 4.0f, r) * (1.0f - smoothstep(t.fireInner, t.fireOuter, rr));
   if (base <= 0) return 0;
-  float gx = fx / kFireGrid, gy = fy / kFireGrid;
-  int x0 = (int)gx, y0 = (int)gy;
-  float tx = gx - x0, ty = gy - y0;
-  const float* p = fire_ + y0 * kFireCells + x0;
   n = lerp(lerp(p[0], p[1], tx), lerp(p[kFireCells], p[kFireCells + 1], tx), ty);
   return clamp01(base * (n * 2.2f - 0.45f));
 }
