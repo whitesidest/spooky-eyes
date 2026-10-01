@@ -42,6 +42,7 @@ DEFAULT_THEMES = [
         ("chucky", "Killer Doll", "halloween"),
         ("saw", "Puppet", "halloween"),
         ("blood_zombie", "Bloodshot Zombie", "halloween"),
+        ("witch", "Witch", "halloween"),
     )
 ]
 CATEGORY_ORDER = ["halloween", "creatures", "sci-fi", "holidays", "fun", "classic"]

@@ -29,9 +29,10 @@ pio device monitor
 3. Later updates can go over the network:
    `pio run -e dualeye_ota -t upload --upload-port spooky-eyes-xxxxxx.local`
 
-Themes (31): Halloween — fire, Sauron, zombie (one dead eye), demon, werewolf, vampire, ghost,
+Themes (32): Halloween — fire, Sauron, zombie (one dead eye), demon, werewolf, vampire, ghost,
 jack-o'-lantern, spider (eight eyes), dead (cartoon X_X), killer doll (glassy blue doll eyes that
-snap), puppet (hollow socket, red eye, cheek spiral), bloodshot zombie (throbbing blood-red eyes);
+snap), puppet (hollow socket, red eye, cheek spiral), bloodshot zombie (throbbing blood-red eyes),
+witch (poison-green slit eye in a violet socket, cauldron flames, scheming squint);
 creatures — cat, dragon, owl, snake, chameleon (independent
 eyes); sci-fi — alien, Terminator, robot; holidays — frost, valentine, St. Patrick's, Easter,
 fireworks; fun — hypnotic, rainbow, sleepy puppy, anime; classic — human. Preview them without

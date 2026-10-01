@@ -1093,6 +1093,57 @@ const ThemeSpec kThemes[] = {
         .blinkSpeed = 0.7f,
         .pupilDilate = 1.3f,
     },
+    {
+        .id = "witch",
+        .name = "Witch",
+        // Wicked witch: a poison-green iris glowing out of a violet-black socket, a cat-like
+        // slit that floods wide, green cauldron flames licking up around it and warty green
+        // lids half-narrowed in a scheming squint. Slow sidelong glances, rare blinks.
+        .sclera = {0.10f, 0.02f, 0.14f},
+        .scleraEdge = {0.00f, 0.00f, 0.00f},
+        .veins = 0,
+        .rings = 0,
+        .irisRadius = 84,
+        .irisInner = {0.58f, 0.96f, 0.22f},
+        .irisOuter = {0.04f, 0.42f, 0.08f},
+        .limbus = {0.02f, 0.10f, 0.03f},
+        .limbusWidth = 12,
+        .striation = 0.7f,
+        .striationFreq = 80,
+        .irisSwirl = 0.15f,  // the potion keeps stirring
+        .pupilShape = PupilShape::Slit,
+        .pupilColor = {0.00f, 0.00f, 0.00f},
+        .pupilMin = 6,
+        .pupilMax = 30,
+        .slitHeight = 0.92f,
+        .fire = FireMode::Rising,
+        .fireLow = {0.16f, 0.02f, 0.22f},
+        .fireMid = {0.25f, 0.80f, 0.10f},
+        .fireHigh = {0.80f, 1.00f, 0.55f},
+        .fireScale = 0.06f,
+        .fireSpeed = 3.0f,
+        .fireAmount = 0.8f,
+        .fireInner = 80,
+        .fireOuter = 126,
+        .glowColor = {0.40f, 1.00f, 0.25f},
+        .glowRadius = 95,
+        .glowAmount = 0.22f,
+        .glowPulse = 0.45f,
+        .specular = 0.6f,
+        .scanlines = 0,
+        .lids = true,
+        .lidColor = {0.26f, 0.42f, 0.14f},  // green witch skin
+        .lidEdge = {0.04f, 0.08f, 0.02f},   // dark lash line
+        .gazeRange = 30,
+        .saccadeRate = 0.5f,
+        .blinkRate = 4,
+        .jitter = 0.4f,
+        .snap = false,
+        .category = "halloween",
+        .lidDroop = 0.14f,   // the scheming squint
+        .blinkSpeed = 0.8f,
+        .pupilDilate = 1.4f,
+    },
 };
 
 constexpr int kThemeCount = sizeof(kThemes) / sizeof(kThemes[0]);

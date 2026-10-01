@@ -181,6 +181,12 @@
    "gif": "werewolf.gif"
   },
   {
+   "id": "witch",
+   "png": "witch.png",
+   "small": "witch_s.png",
+   "gif": "witch.gif"
+  },
+  {
    "id": "zombie",
    "png": "zombie.png",
    "small": "zombie_s.png",
