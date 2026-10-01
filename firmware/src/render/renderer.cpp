@@ -92,7 +92,12 @@ inline float fastSin(float a) {
 
 inline float clamp01(float v) { return v < 0 ? 0 : (v > 1 ? 1 : v); }
 inline float lerp(float a, float b, float t) { return a + (b - a) * t; }
-inline float smoothstep(float e0, float e1, float x) { return smooth01(clamp01((x - e0) * fastRecip(e1 - e0))); }
+inline float smoothstep(float e0, float e1, float x) {
+  // Most call sites have a compile-time width: fold its reciprocal instead of computing it per pixel.
+  const float w = e1 - e0;
+  const float inv = __builtin_constant_p(w) ? 1.0f / w : fastRecip(w);
+  return smooth01(clamp01((x - e0) * inv));
+}
 
 // exp(-x) for x >= 0 via a lerped table; plenty for shading.
 struct ExpTable {
@@ -193,11 +198,13 @@ Renderer::Renderer() {
   int cells = kFireCells * kFireCells;
   int polar = kFireRadii * kFireAngles;
   fire_ = (float*)fastAlloc(sizeof(float) * (cells > polar ? cells : polar));
+  fireI_ = (float*)fastAlloc(sizeof(float) * cells);
   base_ = (Texel*)bigAlloc(sizeof(Texel) * kBaseMax * kBaseMax);
 }
 
 Renderer::~Renderer() {
   free(fire_);
+  free(fireI_);
   free(base_);
 }
 
@@ -326,6 +333,12 @@ void Renderer::setupFrame(const EyeState& s) {
 }
 
 void Renderer::buildFireField() {
+  // Refresh half of the field each frame (alternating lines): flames still move every frame,
+  // each line updates at half rate, and the cost halves. Full rebuild when the theme changes.
+  const bool full = fireTheme_ != t_->id;
+  fireTheme_ = t_->id;
+  fireParity_ ^= 1;
+  const int firstLine = full ? 0 : fireParity_, lineStep = full ? 1 : 2;
   const ThemeSpec& t = *t_;
   const float z = s_.mirror ? 17.0f : 0.0f;  // different flames per eye
   if (t.fire == FireMode::Radial) {
@@ -334,7 +347,7 @@ void Renderer::buildFireField() {
     fireInvStep_ = 1.0f / fireRStep_;
     const float fs = t.fireScale;
     const float rs = fs * 0.09f * (t.fireStretch > 0 ? t.fireStretch : 1.0f);
-    for (int ai = 0; ai < kFireAngles; ++ai) {
+    for (int ai = firstLine; ai < kFireAngles; ai += lineStep) {
       float a = ai * kTwoPi / kFireAngles - kPi;
       float ux = cosf(a), uy = sinf(a);
       for (int ri = 0; ri < kFireRadii; ++ri) {
@@ -346,11 +359,20 @@ void Renderer::buildFireField() {
   } else {
     // Pit flames are stretched vertically into tall tongues.
     const float sy = t.fire == FireMode::Pit ? 0.45f : 1.0f;
-    for (int gy = 0; gy < kFireCells; ++gy) {
+    for (int gy = firstLine; gy < kFireCells; gy += lineStep) {
       for (int gx = 0; gx < kFireCells; ++gx) {
         float fx = gx * kFireGrid, fy = gy * kFireGrid;
         fire_[gy * kFireCells + gx] =
             fbm3Fix(fx * t.fireScale + z, (fy * t.fireScale + s_.time * t.fireSpeed) * sy, s_.time * 0.35f);
+      }
+    }
+    // Shape the flames once per cell (distance, bands, palette input) so pixels only interpolate.
+    for (int gy = 0; gy < kFireCells; ++gy) {
+      for (int gx = 0; gx < kFireCells; ++gx) {
+        const float fx = gx * kFireGrid, fy = gy * kFireGrid;
+        const float dx = fx - cx_, dy = fy - cy_;
+        const int i = gy * kFireCells + gx;
+        fireI_[i] = fireGridValue(fx, fy, fastSqrt(dx * dx + dy * dy), fire_[i]);
       }
     }
   }
@@ -391,9 +413,9 @@ HOT float Renderer::fireRadialAt(float a01, float r) const {
 }
 
 // Rising / pit flames from the screen-space grid (p = top-left cell, tx/ty = bilinear weights).
-HOT float Renderer::fireGridAt(float fx, float fy, float r, const float* p, float tx, float ty) const {
+// Flame intensity at a grid point from its noise value n (evaluated once per cell per frame).
+float Renderer::fireGridValue(float fx, float fy, float r, float n) const {
   const ThemeSpec& t = *t_;
-  float n;
   if (t.fire == FireMode::Pit) {
     // Source sits low in the socket; flames reach far upward and barely downward.
     float dx = fx - cx_, dy = fy - (cy_ + 38.0f);
@@ -401,7 +423,6 @@ HOT float Renderer::fireGridAt(float fx, float fy, float r, const float* p, floa
     float rr = fastSqrt(dx * dx + v * v);
     float base = 1.0f - smoothstep(18.0f, t.fireOuter, rr);
     if (base <= 0) return 0;
-    n = lerp(lerp(p[0], p[1], tx), lerp(p[kFireCells], p[kFireCells + 1], tx), ty);
     // Ember bed: a wide, always-hot pool at the bottom of the socket.
     float ex = dx * 0.55f, ey = dy < 0 ? dy * 1.2f : dy * 1.8f;
     float er = fastSqrt(ex * ex + ey * ey);
@@ -413,8 +434,13 @@ HOT float Renderer::fireGridAt(float fx, float fy, float r, const float* p, floa
   float rr = fastSqrt(dx * dx + up * up);
   float base = smoothstep(t.fireInner - 8.0f, t.fireInner + 4.0f, r) * (1.0f - smoothstep(t.fireInner, t.fireOuter, rr));
   if (base <= 0) return 0;
-  n = lerp(lerp(p[0], p[1], tx), lerp(p[kFireCells], p[kFireCells + 1], tx), ty);
   return clamp01(base * (n * 2.2f - 0.45f));
+}
+
+// Rising / pit flames: bilinear lookup in the per-frame intensity grid (p = top-left noise cell).
+HOT float Renderer::fireGridAt(float, float, float, const float* p, float tx, float ty) const {
+  const float* q = fireI_ + (p - fire_);
+  return lerp(lerp(q[0], q[1], tx), lerp(q[kFireCells], q[kFireCells + 1], tx), ty);
 }
 
 // Signed distance (px, <0 inside) to the pupil shape; dx/dy relative to the iris centre.

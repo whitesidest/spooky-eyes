@@ -10,6 +10,7 @@
 #include "audio.h"
 #include "battery.h"
 #include "board.h"
+#include "theme_sounds.h"
 #include "display.h"
 #include "render/controller.h"
 #include "render/noise.h"
@@ -31,7 +32,17 @@ struct Settings {
   uint8_t volume = 70;
   bool listen = false;       // react to loud noises (startle + glance toward the sound)
   uint8_t sensitivity = 50;  // 0 = only very loud .. 100 = whispers
+  bool themeSounds = true;   // play the theme's paired sound when the eyes startle
 };
+
+// NVS key for a theme's sound override (keys max 15 chars, so hash the theme id).
+String themeSoundKey(const char* themeId) {
+  uint32_t h = 2166136261u;
+  for (const char* p = themeId; *p; ++p) h = (h ^ (uint8_t)*p) * 16777619u;
+  char key[12];
+  snprintf(key, sizeof key, "ts%08lx", (unsigned long)h);
+  return key;
+}
 
 // Mic threshold for reactions: sensitivity 0 -> -18 dBFS, 100 -> -58 dBFS.
 float listenThresholdDb(uint8_t sensitivity) { return -18.0f - sensitivity * 0.4f; }
@@ -214,6 +225,7 @@ void loadSettings() {
   cfg.volume = prefs.getUChar("vol", 70);
   cfg.listen = prefs.getBool("listen", false);
   cfg.sensitivity = prefs.getUChar("sens", 50);
+  cfg.themeSounds = prefs.getBool("tsnd", true);
   name = prefs.getString("name", "");
 }
 
@@ -226,7 +238,31 @@ void saveSettings() {
   prefs.putUChar("vol", cfg.volume);
   prefs.putBool("listen", cfg.listen);
   prefs.putUChar("sens", cfg.sensitivity);
+  prefs.putBool("tsnd", cfg.themeSounds);
   prefs.putString("name", name);
+}
+
+// The sound paired with a theme: a per-board override ("-" = none) or the built-in default.
+// Cached for the current theme so state reads (under the render lock) don't touch flash.
+const eyes::ThemeSpec* soundCacheTheme = nullptr;
+String soundCache;
+
+String themeSoundFor(const eyes::ThemeSpec* theme) {
+  if (theme == soundCacheTheme) return soundCache;
+  String override = prefs.getString(themeSoundKey(theme->id).c_str(), "");
+  const char* d = theme_sounds::defaultFor(theme->id);
+  soundCache = override == "-" ? String() : (override.length() ? override : String(d ? d : ""));
+  soundCacheTheme = theme;
+  return soundCache;
+}
+
+// Startle plus the theme's sound (if enabled). Call with the lock held.
+void startleWithSound() {
+  ctl.startle();
+  if (!cfg.themeSounds) return;
+  String sound = themeSoundFor(cfg.theme);
+  String ignored;
+  if (sound.length()) audio::play(sound.c_str(), &ignored);
 }
 
 bool readUnit(JsonVariantConst v, float lo, float hi, float* out) {
@@ -292,7 +328,7 @@ void loop() {
     noiseEvents = noiseEvents + 1;
     if (listen) {
       Guard g;
-      ctl.startle();
+      startleWithSound();
       if (dir != 0) ctl.look(dir * 0.9f, 0.05f, 2.5f);
       changed();
     }
@@ -360,6 +396,21 @@ bool applyState(JsonVariantConst in, String* error) {
     if (!readUnit(in["sensitivity"], 0, 100, &f)) return *error = "sensitivity must be 0-100", false;
     next.sensitivity = (uint8_t)f;
   }
+  if (!in["theme_sounds"].isNull()) {
+    if (!in["theme_sounds"].is<bool>()) return *error = "theme_sounds must be boolean", false;
+    next.themeSounds = in["theme_sounds"].as<bool>();
+  }
+  bool hasThemeSound = in.as<JsonObjectConst>()["theme_sound"].is<JsonVariantConst>();
+  String themeSound;
+  if (hasThemeSound) {
+    JsonVariantConst v = in["theme_sound"];
+    if (v.isNull()) {
+      themeSound = "-";
+    } else {
+      themeSound = v.as<const char*>() ? v.as<const char*>() : "";
+      if (!audio::validName(themeSound.c_str())) return *error = "theme_sound must be a sound name or null", false;
+    }
+  }
   String newName;
   bool hasName = !in["name"].isNull();
   if (hasName) {
@@ -384,6 +435,10 @@ bool applyState(JsonVariantConst in, String* error) {
 
   Guard g;
   if (hasName) name = newName;
+  if (hasThemeSound) {
+    prefs.putString(themeSoundKey(next.theme->id).c_str(), themeSound);
+    soundCacheTheme = nullptr;
+  }
   cfg = next;
   ctl.setTheme(cfg.theme);
   ctl.setMood(cfg.mood);
@@ -404,7 +459,7 @@ bool applyAction(JsonVariantConst in, String* error) {
   } else if (!strcmp(action, "wink_right")) {
     ctl.wink(1);
   } else if (!strcmp(action, "startle")) {
-    ctl.startle();
+    startleWithSound();
   } else if (!strcmp(action, "roll")) {
     ctl.roll();
   } else if (!strcmp(action, "sound")) {
@@ -444,6 +499,10 @@ void writeState(JsonObject out) {
   out["volume"] = cfg.volume;
   out["listen"] = cfg.listen;
   out["sensitivity"] = cfg.sensitivity;
+  out["theme_sounds"] = cfg.themeSounds;
+  String ts = themeSoundFor(cfg.theme);
+  if (ts.length()) out["theme_sound"] = ts;
+  else out["theme_sound"] = nullptr;
   out["sound_level"] = roundf(audio::level());
   String now = audio::playing();
   if (now.length()) out["playing"] = now;
@@ -481,6 +540,9 @@ void writeInfo(JsonObject out) {
     t["id"] = eyes::themeAt(i)->id;
     t["name"] = eyes::themeAt(i)->name;
     t["category"] = eyes::themeAt(i)->category ? eyes::themeAt(i)->category : "other";
+    const char* snd = theme_sounds::defaultFor(eyes::themeAt(i)->id);
+    if (snd) t["sound"] = snd;
+    else t["sound"] = nullptr;
   }
   JsonArray moods = out["moods"].to<JsonArray>();
   for (int i = 0; i < eyes::kMoodCount; ++i) moods.add(eyes::moodName((eyes::Mood)i));

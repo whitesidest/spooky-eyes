@@ -75,6 +75,7 @@ class Renderer {
   float fireAt(float fx, float fy, float ux, float uy, float r) const;
   float fireRadialAt(float a01, float r) const;
   float fireGridAt(float fx, float fy, float r, const float* p, float tx, float ty) const;
+  float fireGridValue(float fx, float fy, float r, float n) const;
   float pupilEdgeAt(float dx, float dy, float r) const;
   void buildFireField();
 
@@ -106,6 +107,9 @@ class Renderer {
   bool hueOn_ = false;
   float hue_[9];  // iris hue-rotation matrix (row-major)
   float fireR0_ = 0, fireRStep_ = 1;
+  const char* fireTheme_ = nullptr;  // theme the fire field was last fully built for
+  int fireParity_ = 0;
+  float* fireI_ = nullptr;  // rising/pit: final intensity per grid cell
   float* fire_ = nullptr;  // rising: [kFireCells^2], radial: [kFireRadii][kFireAngles]
   float lidTop_[kSize], lidBot_[kSize];
   bool halfRes_ = false;
