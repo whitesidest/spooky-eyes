@@ -66,6 +66,14 @@
       <input type="range" name="brightness" min="0" max="255" step="5" value="200" disabled>
       <output id="scene-bri-out">78%</output>
     </label>
+    {% if snapshot.sounds.builtin %}
+    <label class="check"><input type="checkbox" name="set_volume"><span>Set volume</span></label>
+    <label class="range">
+      <span class="sr-only">Volume</span>
+      <input type="range" name="volume" min="0" max="100" step="5" value="70" disabled>
+      <output id="scene-vol-out">70%</output>
+    </label>
+    {% endif %}
     <label class="check"><input type="checkbox" name="set_look"><span>Look somewhere</span></label>
     <div id="look-fields" class="pad-wrap" hidden>
       <div id="look-pad" class="pad pad-sm" role="application" tabindex="0" aria-label="Where to look. Drag; arrow keys nudge."><div class="ring"></div><div class="puck"></div></div>
@@ -74,7 +82,17 @@
     </div>
     <label class="field"><span>Then</span>
       <select class="input" name="after">
-        <option value="">Nothing</option><option value="blink">Blink</option><option value="startle">Startle</option><option value="roll">Eye roll</option><option value="wink_left">Wink left</option><option value="wink_right">Wink right</option><option value="release">Release gaze</option>
+        <option value="">Nothing</option>
+        <optgroup label="Eyes">
+          <option value="blink">Blink</option><option value="startle">Startle</option><option value="roll">Eye roll</option><option value="wink_left">Wink left</option><option value="wink_right">Wink right</option><option value="release">Release gaze</option>
+        </optgroup>
+        {% if snapshot.sounds.builtin %}
+        <optgroup label="Play a sound" id="after-sounds">
+          {% for s in snapshot.sounds.builtin %}<option value="sound:{{ s }}">{{ s|capfirst }}</option>{% endfor %}
+          {% for s in snapshot.sounds.clips %}<option value="sound:{{ s }}">{{ s }} (clip)</option>{% endfor %}
+        </optgroup>
+        <optgroup label="Sound"><option value="stop_sound">Stop any sound</option></optgroup>
+        {% endif %}
       </select>
     </label>
     <div class="dialog-actions">

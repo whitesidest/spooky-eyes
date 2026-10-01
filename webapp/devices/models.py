@@ -17,7 +17,8 @@ class Device(models.Model):
     fw = models.CharField(max_length=30, blank=True)
     last_seen = models.DateTimeField(null=True, blank=True)
     last_state = models.JSONField(default=dict, blank=True)
-    info = models.JSONField(default=dict, blank=True, help_text="Last /api/info (themes, moods)")
+    info = models.JSONField(default=dict, blank=True, help_text="Last /api/info (themes, moods, features)")
+    sounds = models.JSONField(default=dict, blank=True, help_text="Last /api/sounds (built-ins, clips, free_bytes)")
 
     class Meta:
         ordering = ["name"]
@@ -44,6 +45,13 @@ class Device(models.Model):
         if isinstance(path, str) and path.startswith("/") and not path.startswith("//"):
             return path
         return None
+
+    @property
+    def features(self):
+        """{"speaker", "microphone", "battery"} as the board reports them (all False on old firmware)."""
+        f = self.info.get("features")
+        f = f if isinstance(f, dict) else {}
+        return {k: bool(f.get(k)) for k in ("speaker", "microphone", "battery")}
 
     @property
     def moods(self):

@@ -1,7 +1,12 @@
 """Validates payloads before they are fanned out to devices or stored as scenes/groups."""
+import re
+
 MOODS = {"neutral", "angry", "surprised", "sleepy", "asleep"}
-ACTIONS = {"blink", "wink_left", "wink_right", "look", "release", "startle", "roll"}
+ACTIONS = {"blink", "wink_left", "wink_right", "look", "release", "startle", "roll", "sound", "tone", "stop_sound"}
 NAME_MAX = 32  # firmware limit for the board name
+SOUND_NAME_RE = re.compile(r"^[a-z0-9_-]{1,24}$")  # firmware rule for sound names
+SOUND_NAME_MAX = 24
+BUILTIN_SOUNDS = ["growl", "heartbeat", "whisper", "creak", "zap", "chime", "test"]
 
 
 class ValidationError(ValueError):
@@ -19,11 +24,13 @@ def clean_state(state) -> dict:
         raise ValidationError("state must be a non-empty object")
     out = {}
     for key, value in state.items():
-        if key in ("on", "autonomous"):
+        if key in ("on", "autonomous", "listen"):
             if not isinstance(value, bool):
                 raise ValidationError(f"{key} must be boolean")
         elif key == "brightness":
             value = int(_num(value, 0, 255, key))
+        elif key in ("volume", "sensitivity"):
+            value = int(_num(value, 0, 100, key))
         elif key == "theme":
             if not isinstance(value, str) or not value:
                 raise ValidationError("theme must be a theme id")
@@ -39,6 +46,20 @@ def clean_state(state) -> dict:
     return out
 
 
+def clean_sound_name(value) -> str:
+    """A sound (built-in or clip) name: 1-24 of a-z 0-9 _ -."""
+    if not isinstance(value, str) or not SOUND_NAME_RE.match(value):
+        raise ValidationError("sound name must be 1-24 characters of a-z, 0-9, _ or -")
+    return value
+
+
+def suggest_sound_name(filename: str) -> str:
+    """Turn an uploaded file's name into a valid sound name ("Big Growl 2.mp3" -> "big_growl_2")."""
+    stem = (filename or "").rsplit("/", 1)[-1].rsplit(".", 1)[0].lower()
+    stem = re.sub(r"[^a-z0-9_-]+", "_", stem).strip("_-")
+    return stem[:SOUND_NAME_MAX] or "clip"
+
+
 def clean_action(payload) -> dict:
     if not isinstance(payload, dict):
         raise ValidationError("action must be an object")
@@ -50,6 +71,11 @@ def clean_action(payload) -> dict:
         out["x"] = float(_num(payload.get("x", 0), -1, 1, "x"))
         out["y"] = float(_num(payload.get("y", 0), -1, 1, "y"))
         out["duration"] = float(_num(payload.get("duration", 0), 0, 3600, "duration"))
+    elif name == "sound":
+        out["name"] = clean_sound_name(payload.get("name"))
+    elif name == "tone":
+        out["hz"] = float(_num(payload.get("hz", 440), 20, 8000, "hz"))
+        out["ms"] = int(_num(payload.get("ms", 500), 10, 10000, "ms"))
     return out
 
 

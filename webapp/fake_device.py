@@ -8,22 +8,34 @@ GET /sim/frame.png (advertised as "preview" in /api/info) for the web controller
 
 If the library can't be built it falls back to a plain in-memory fake without a preview.
 
-usage: python fake_device.py [--port 8081] [--id aabbccddeeff] [--name "Porch Eyes"] [--theme sauron] [--legacy]
+usage: python fake_device.py [--port 8081] [--id aabbccddeeff] [--name "Porch Eyes"] [--theme sauron]
+                             [--legacy] [--no-speaker] [--no-mic] [--no-battery] [--battery 64]
 (no /ws; the web controller doesn't need it)
 
 Renaming: POST /api/state {"name": "Porch skull"} (1-32 chars) stores the name, which /api/info and the
-state then report. --legacy emulates older firmware that answers 400 "unknown field" instead.
+state then report. --legacy emulates older firmware that answers 400 "unknown field" instead and has
+none of the sound/battery API.
+
+Sound and battery (current firmware): /api/info has features {speaker, microphone, battery}; the state
+carries volume, listen, sensitivity, sound_level (a slowly wandering fake room level with the odd
+"bang"), playing and battery {voltage, percent} (slowly draining). /api/sounds lists/uploads/deletes
+clips, kept in memory with a 3.4 MB budget; "sound", "tone" and "stop_sound" actions mark something
+as playing for its duration.
 """
 import argparse
 import ctypes
 import json
+import math
 import os
+import random
+import re
 import struct
 import subprocess
 import threading
 import time
 import zlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import parse_qs, urlsplit
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SIM_DIR = os.path.join(HERE, "..", "tools", "sim")
@@ -36,6 +48,46 @@ TICK_HZ = 30
 FALLBACK_THEMES = [{"id": "sauron", "name": "Sauron", "category": "halloween"}]
 FALLBACK_MOODS = ["neutral", "angry", "surprised", "sleepy", "asleep"]
 ACTIONS = {"blink", "wink_left", "wink_right", "look", "release", "startle", "roll"}
+SOUND_ACTIONS = {"sound", "tone", "stop_sound"}
+BUILTIN = {"growl": 2.2, "heartbeat": 2.6, "whisper": 2.6, "creak": 2.0, "zap": 0.9, "chime": 2.2, "test": 1.0}
+SOUND_NAME = re.compile(r"^[a-z0-9_-]{1,24}$")
+SOUND_BUDGET = 3_400_000  # bytes of LittleFS the real board has for clips
+
+
+def wav_info(data):
+    """(ok, seconds) for a 16-bit PCM WAV, mono/stereo, 8-48 kHz — the same rule the firmware applies."""
+    if len(data) < 44 or data[:4] != b"RIFF" or data[8:12] != b"WAVE":
+        return False, 0
+    pos, fmt, length = 12, None, 0
+    while pos + 8 <= len(data):
+        tag, size = data[pos:pos + 4], struct.unpack_from("<I", data, pos + 4)[0]
+        if tag == b"fmt " and size >= 16:
+            fmt = struct.unpack_from("<HHIIHH", data, pos + 8)
+        elif tag == b"data":
+            length = min(size, len(data) - pos - 8)
+            break
+        pos += 8 + size + (size & 1)
+    if not fmt or not length:
+        return False, 0
+    kind, channels, rate, _, _, bits = fmt
+    if kind != 1 or bits != 16 or channels not in (1, 2) or not 8000 <= rate <= 48000:
+        return False, 0
+    return True, length / (rate * channels * 2)
+
+
+def parse_multipart(body, content_type):
+    """Return the first file part's bytes from a multipart/form-data body (any field name)."""
+    m = re.search(r'boundary="?([^";]+)"?', content_type or "")
+    if not m:
+        return body  # a raw upload
+    boundary = b"--" + m.group(1).encode()
+    for part in body.split(boundary)[1:]:
+        if part.strip() in (b"", b"--"):
+            continue
+        head, _, data = part.partition(b"\r\n\r\n")
+        if b"filename=" in head:
+            return data[:-2] if data.endswith(b"\r\n") else data
+    return b""
 
 
 def load_sim():
@@ -80,12 +132,22 @@ def encode_png(width, height, rgb):
 class Board:
     """Device state plus (optionally) the simulated eyes; thread-safe."""
 
-    def __init__(self, lib, device_id, theme, name, legacy=False):
+    def __init__(self, lib, device_id, theme, name, legacy=False, speaker=True, mic=True, battery=64.0):
         self.lib = lib
         self.name = name
         self.legacy = legacy
         self.lock = threading.Lock()
         self.started = time.time()
+        # Sound + battery (not on legacy firmware).
+        self.features = {"speaker": speaker and not legacy, "microphone": mic and speaker and not legacy,
+                         "battery": battery is not None and not legacy}
+        self.audio = {"volume": 70, "listen": False, "sensitivity": 50}
+        self.clips = {}  # name -> wav bytes
+        self.playing, self.playing_until = None, 0.0
+        self.battery_pct = battery if battery is not None else 0.0
+        self.level_phase = random.random() * 100
+        self.bang_until = 0.0
+        self.next_bang = time.monotonic() + random.uniform(8, 20)
         if lib:
             self.themes = [{"id": lib.sim_theme_id(n).decode(), "name": lib.sim_theme_name(n).decode(),
                             "category": lib.sim_theme_category(n).decode()} for n in range(lib.sim_theme_count())]
@@ -119,7 +181,93 @@ class Board:
                 s["gaze"] = {"x": round(self.lib.sim_target_x(self.sim), 2), "y": round(self.lib.sim_target_y(self.sim), 2)}
         if not self.legacy:
             s["name"] = self.name
+            s.update(self.audio_state())
         return {**s, "rssi": -55, "fps": self.fps if self.state["on"] else 0, "uptime": int(time.time() - self.started)}
+
+    # --- sound + battery -------------------------------------------------------------------------
+
+    def sound_level(self):
+        """A fake room: a slow wander around -60 dBFS with the odd bang."""
+        now = time.monotonic()
+        t = now + self.level_phase
+        base = -62 + 7 * math.sin(t / 3.1) + 4 * math.sin(t / 0.9) + random.uniform(-2, 2)
+        if now >= self.next_bang:
+            self.bang_until = now + random.uniform(0.6, 1.4)
+            self.next_bang = now + random.uniform(8, 20)
+        if now < self.bang_until:
+            base = max(base, -14 + random.uniform(-4, 4))
+        if self.playing:
+            base = max(base, -24 + random.uniform(-3, 3))  # the speaker is right next to the mics
+        return round(max(-90.0, min(0.0, base)))
+
+    def audio_state(self):
+        out = {}
+        if self.features["speaker"]:
+            if self.playing and time.monotonic() > self.playing_until:
+                self.playing = None
+            out.update(self.audio)
+            out["sound_level"] = self.sound_level() if self.features["microphone"] else -90
+            out["playing"] = self.playing
+            if (self.audio["listen"] and self.features["microphone"]
+                    and out["sound_level"] > -18 - 0.4 * self.audio["sensitivity"]):
+                self.react()
+        if self.features["battery"]:
+            elapsed = time.time() - self.started
+            pct = max(0.0, self.battery_pct - elapsed / 90)  # ~1 % every 90 s so the badge visibly moves
+            out["battery"] = {"voltage": round(3.3 + 0.9 * pct / 100, 2), "percent": int(pct)}
+        else:
+            out["battery"] = None
+        return out
+
+    def react(self):
+        """Loud noise while listening: startle, like the firmware."""
+        if self.lib:
+            with self.lock:
+                self.lib.sim_startle(self.sim)
+
+    def sounds_listing(self):
+        used = sum(len(w) for w in self.clips.values())
+        return {"builtin": list(BUILTIN), "clips": [{"name": n, "bytes": len(w)} for n, w in sorted(self.clips.items())],
+                "free_bytes": max(0, SOUND_BUDGET - used)}
+
+    def add_clip(self, name, data):
+        if not SOUND_NAME.match(name or ""):
+            return "name must be 1-24 of a-z 0-9 _ -"
+        ok, _ = wav_info(data)
+        if not ok:
+            return "not a 16-bit PCM WAV (mono/stereo, 8-48 kHz)"
+        if len(data) > self.sounds_listing()["free_bytes"] + len(self.clips.get(name, b"")):
+            return "upload failed (too big?)"
+        self.clips[name] = data
+        return None
+
+    def remove_clip(self, name):
+        return self.clips.pop(name, None) is not None
+
+    def play(self, body):
+        action = body["action"]
+        if not self.features["speaker"]:
+            return "audio not available"
+        if action == "stop_sound":
+            self.playing = None
+            return None
+        if action == "tone":
+            hz, ms = body.get("hz", 440), body.get("ms", 500)
+            if not (isinstance(hz, (int, float)) and 20 <= hz <= 8000 and isinstance(ms, (int, float)) and 10 <= ms <= 10000):
+                return "tone needs hz 20-8000, ms 10-10000"
+            self.playing, self.playing_until = f"tone {int(hz)} Hz", time.monotonic() + ms / 1000
+            return None
+        name = body.get("name")
+        if name in BUILTIN:
+            seconds = BUILTIN[name]
+        elif isinstance(name, str) and name in self.clips:
+            seconds = wav_info(self.clips[name])[1]
+        else:
+            return "unknown sound"
+        self.playing, self.playing_until = name, time.monotonic() + seconds
+        return None
+
+    # --- state + actions -------------------------------------------------------------------------
 
     def apply_state(self, body):
         if "name" in body:
@@ -128,6 +276,15 @@ class Board:
             if not isinstance(body["name"], str) or not 1 <= len(body["name"].strip()) <= 32:
                 return "name must be 1-32 characters"
             self.name = body["name"].strip()
+        for key in ("volume", "listen", "sensitivity"):
+            if key in body:
+                if self.legacy:
+                    return f"unknown field {key}"
+                if key == "listen" and not isinstance(body[key], bool):
+                    return "listen must be boolean"
+                if key != "listen" and not (isinstance(body[key], (int, float)) and 0 <= body[key] <= 100):
+                    return f"{key} must be 0-100"
+                self.audio[key] = body[key] if key == "listen" else int(body[key])
         if "theme" in body and body["theme"] not in {t["id"] for t in self.themes}:
             return "unknown theme"
         if "mood" in body and body["mood"] not in self.moods:
@@ -149,6 +306,8 @@ class Board:
 
     def apply_action(self, body):
         action = body.get("action")
+        if action in SOUND_ACTIONS and not self.legacy:
+            return self.play(body)
         if action not in ACTIONS:
             return "unknown action"
         x, y, duration = body.get("x", 0), body.get("y", 0), body.get("duration", 0)
@@ -216,17 +375,37 @@ def make_handler(info, board):
                 return self._send(200, board.full_state())
             if path == "/sim/frame.png" and board.lib:
                 return self._send(200, board.frame_png(), "image/png")
+            if path == "/api/sounds" and board.features["speaker"]:
+                return self._send(200, board.sounds_listing())
+            self._send(404, {"error": "not found"})
+
+        def do_DELETE(self):
+            url = urlsplit(self.path)
+            if url.path == "/api/sounds" and board.features["speaker"]:
+                name = parse_qs(url.query).get("name", [""])[0]
+                if not board.remove_clip(name):
+                    return self._send(400, {"error": "unknown sound"})
+                return self._send(200, {"ok": True})
             self._send(404, {"error": "not found"})
 
         def do_POST(self):
+            url = urlsplit(self.path)
+            raw = self.rfile.read(int(self.headers.get("Content-Length", 0)))
+            if url.path == "/api/sounds" and board.features["speaker"]:
+                name = parse_qs(url.query).get("name", [""])[0]
+                error = board.add_clip(name, parse_multipart(raw, self.headers.get("Content-Type", "")))
+                if error:
+                    return self._send(400, {"error": error})
+                print("clip", name, flush=True)
+                return self._send(200, board.sounds_listing())
             try:
-                body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}")
+                body = json.loads(raw or b"{}")
             except ValueError:
                 return self._send(400, {"error": "invalid JSON"})
-            if self.path == "/api/state":
+            if url.path == "/api/state":
                 error = board.apply_state(body)
                 return self._send(400, {"error": error}) if error else self._send(200, board.full_state())
-            if self.path == "/api/action":
+            if url.path == "/api/action":
                 error = board.apply_action(body)
                 if error:
                     return self._send(400, {"error": error})
@@ -246,15 +425,22 @@ def main():
     ap.add_argument("--id", default="a1b2c3d4e5f6")
     ap.add_argument("--name", default=None)
     ap.add_argument("--theme", default="sauron")
-    ap.add_argument("--legacy", action="store_true", help="emulate firmware without the rename contract")
+    ap.add_argument("--legacy", action="store_true", help="emulate firmware without the rename/sound/battery contracts")
+    ap.add_argument("--no-speaker", action="store_true", help="a board without audio (hides the sound UI)")
+    ap.add_argument("--no-mic", action="store_true", help="speaker but no microphones")
+    ap.add_argument("--no-battery", action="store_true", help="running from USB: battery is null")
+    ap.add_argument("--battery", type=float, default=64.0, help="starting battery percent (drains slowly)")
     args = ap.parse_args()
-    board = Board(load_sim(), args.id, args.theme, args.name or f"Fake Eyes {args.id[-6:]}", args.legacy)
+    board = Board(load_sim(), args.id, args.theme, args.name or f"Fake Eyes {args.id[-6:]}", args.legacy,
+                  speaker=not args.no_speaker, mic=not args.no_mic, battery=None if args.no_battery else args.battery)
     mac = ":".join(args.id[i:i + 2] for i in range(0, 12, 2)).upper()
     info = {
         "id": args.id, "name": board.name, "model": "simulator" if board.lib else "fake",
         "fw": "0.0.0-sim" if board.lib else "0.0.0-fake", "mac": mac, "ip": "127.0.0.1",
         "themes": board.themes, "moods": board.moods, "eyes": 2,
     }
+    if not args.legacy:
+        info["features"] = dict(board.features)
     if board.lib:
         info["preview"] = "/sim/frame.png"
     server = ThreadingHTTPServer(("0.0.0.0", args.port), make_handler(info, board))
