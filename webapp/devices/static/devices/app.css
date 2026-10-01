@@ -412,7 +412,7 @@ dl.kv dd { margin: 0; font-variant-numeric: tabular-nums; overflow-wrap: anywher
 @media (min-width: 900px) {
   .puppet { grid-template-columns: 1fr 1fr; column-gap: 40px; align-items: start; }
   .puppet .head, .puppet .targets, .puppet .live-grid { grid-column: 1 / -1; }
-  .puppet .pad-wrap { grid-column: 1; grid-row: span 2; }
+  .puppet .pad-wrap { grid-column: 1; grid-row: span 3; }
   .puppet .actions { grid-column: 2; align-self: end; }
   .puppet .section { grid-column: 2; align-self: start; }
   .puppet .pad-lg { width: min(100%, 480px); }
@@ -453,6 +453,93 @@ dialog.sheet .dialog-actions .spacer { flex: 1; }
 .scene-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 @media (max-width: 480px) { .scene-form-grid { grid-template-columns: 1fr; } }
 .pad-sm { width: 180px; }
+
+/* ---- Battery: a small cell whose charge is the fill; red under 20 % ---- */
+.battery { display: inline-flex; align-items: center; gap: 5px; color: var(--bone-dim); font-size: 0.88rem; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.battery svg { width: 22px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.5; flex: 0 0 auto; }
+.battery svg .charge { stroke: none; fill: currentColor; }
+.battery.low { color: #ff8a82; }
+.battery.low svg { filter: drop-shadow(0 0 6px rgba(224, 70, 60, 0.5)); }
+.status .battery { margin-left: 4px; }
+.status .battery::before { content: ""; width: 1px; height: 14px; background: var(--line); margin-right: 4px; }
+
+/* ---- Sound: a board of effects, a volume slider and the room-noise meter ---- */
+.sound { position: relative; }
+.sound .section-head { align-items: center; }
+.sound .btn-stop { min-height: 40px; padding-inline: 12px; }
+.sound .btn-stop:disabled { opacity: 0.4; cursor: default; }
+.sound .btn-stop svg rect { fill: currentColor; stroke: none; }
+.sound .btn-stop:not(:disabled) { color: var(--ember); border-color: rgba(255, 160, 46, 0.45); }
+.range-volume, .range-sens { grid-template-columns: auto 1fr auto; }
+.range-volume::before {
+  content: ""; width: 22px; height: 22px; flex: 0 0 auto; background: currentColor; color: var(--ash);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 10v4h3l4 3V7l-4 3z'/%3E%3Cpath d='M15 9a4 4 0 0 1 0 6M18 6a8 8 0 0 1 0 12'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 10v4h3l4 3V7l-4 3z'/%3E%3Cpath d='M15 9a4 4 0 0 1 0 6M18 6a8 8 0 0 1 0 12'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+.range-sens .label { color: var(--ash); font-size: 0.9rem; font-weight: 500; }
+.now-playing { display: inline-flex; align-items: center; gap: 8px; color: var(--ember); min-height: 20px; }
+.now-playing .wave { display: inline-flex; align-items: flex-end; gap: 2px; height: 14px; }
+.now-playing .wave i { width: 3px; background: currentColor; border-radius: 2px; animation: wave 0.9s ease-in-out infinite; height: 40%; }
+.now-playing .wave i:nth-child(2) { animation-delay: 0.15s; }
+.now-playing .wave i:nth-child(3) { animation-delay: 0.3s; }
+.now-playing .wave i:nth-child(4) { animation-delay: 0.45s; }
+@keyframes wave { 0%, 100% { height: 30%; } 50% { height: 100%; } }
+
+.sound-board { display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); }
+.sound-tile {
+  position: relative; display: grid; justify-items: center; align-content: center; gap: 6px; min-height: 84px; padding: 10px 6px 10px;
+  border-radius: 14px; background: var(--ink-2); border: 1px solid var(--line-soft); color: var(--bone-dim); cursor: pointer;
+  text-align: center; transition: border-color 0.12s, background 0.12s, color 0.12s; -webkit-tap-highlight-color: transparent;
+}
+.sound-tile:hover { border-color: var(--line); color: var(--bone); background: var(--slate); }
+.sound-tile:active { transform: translateY(1px); }
+.sound-tile svg { width: 28px; height: 28px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.sound-tile span { font-size: 0.88rem; font-weight: 600; line-height: 1.2; overflow-wrap: anywhere; }
+.sound-tile small { color: var(--ash); font-size: 0.75rem; font-weight: 500; }
+.sound-tile[aria-pressed="true"] { border-color: var(--ember); color: var(--ember); box-shadow: 0 0 0 1px var(--ember), var(--glow); background: rgba(255, 160, 46, 0.06); }
+.sound-tile[aria-busy="true"] { opacity: 0.6; }
+.sound-tile.clip svg { color: var(--bone-dim); }
+.sound-tile.add { border-style: dashed; background: transparent; color: var(--ash); }
+.sound-tile.add:hover { color: var(--bone); border-color: var(--line); }
+.sound-slot { position: relative; display: grid; }
+.sound-slot .del {
+  position: absolute; top: -8px; right: -8px; z-index: 1; width: 34px; height: 34px; border-radius: 50%; display: none; place-items: center;
+  background: var(--slate-2); color: #ff8a82; border: 1px solid rgba(224, 70, 60, 0.5); cursor: pointer; padding: 0;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45);
+}
+.sound-slot .del svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.sound-slot .del:hover { background: rgba(224, 70, 60, 0.18); border-color: var(--blood); }
+.sound-board.editing .sound-slot .del { display: grid; }
+.sound-board.editing .sound-tile:not(.clip):not(.add) { opacity: 0.45; pointer-events: none; }
+#clips-edit[aria-pressed="true"] { background: var(--slate); color: var(--bone); }
+
+.listen { display: grid; gap: 10px; padding-top: 4px; }
+.meter { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 12px; }
+.meter-label { color: var(--ash); font-size: 0.9rem; font-weight: 500; }
+.meter-track { position: relative; height: 8px; border-radius: 8px; background: var(--line); overflow: visible; }
+.meter-fill {
+  height: 100%; width: 0; border-radius: 8px; transition: width 0.3s ease-out, background-color 0.3s;
+  background: linear-gradient(90deg, #6b4a24, var(--ember) 70%, #ffd27a);
+}
+.meter.loud .meter-fill { box-shadow: 0 0 14px rgba(255, 160, 46, 0.6); }
+.meter.quiet .meter-fill { background: #6f6880; }
+.meter-tick { position: absolute; top: -4px; bottom: -4px; width: 2px; border-radius: 1px; background: var(--bone); left: 72%; transform: translateX(-50%); transition: left 0.2s; }
+.meter-tick::after { content: ""; position: absolute; left: 50%; top: -5px; width: 6px; height: 6px; transform: translateX(-50%) rotate(45deg); background: var(--bone); }
+.meter.off .meter-tick { opacity: 0.35; }
+.meter-out { min-width: 5.5ch; text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--bone-dim); font-size: 0.92rem; }
+
+/* Fleet cards: what's playing and the battery sit in the meta row */
+.card-meta .playing { display: inline-flex; align-items: center; gap: 5px; color: var(--ember); font-weight: 600; }
+.card-meta .playing svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.card-meta .battery { margin-left: auto; }
+
+/* Puppeteer: a one-thumb strip of sounds */
+.sound-strip-wrap .section-head { align-items: center; }
+.sound-strip .chip svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.sound-strip .chip { min-height: 44px; }
+.sound-strip .chip[aria-pressed="true"] { background: var(--ember); border-color: var(--ember); color: var(--ember-ink); }
+.sound-strip .chip.stop { color: var(--ash); }
+.sound-strip .chip.stop svg rect { fill: currentColor; stroke: none; }
 
 /* ---- Toasts ---- */
 .toasts {

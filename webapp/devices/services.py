@@ -5,8 +5,9 @@ from concurrent.futures import ThreadPoolExecutor
 
 from django.utils import timezone
 
-from . import client
+from . import audio, client
 from .models import Device, Group
+from .validation import BUILTIN_SOUNDS
 
 MAX_WORKERS = 16
 
@@ -111,7 +112,84 @@ def register(host: str, port: int = 80) -> Device:
         device.save(update_fields=["last_state"])
     except client.DeviceError:
         pass
+    if device.features["speaker"]:
+        try:
+            fetch_sounds(device)
+        except client.DeviceError:
+            pass
     return device
+
+
+# --- Sounds ---
+
+def fetch_sounds(device: Device) -> dict:
+    """GET the board's sound library and remember it (for scenes and group sound strips)."""
+    listing = _store_sounds(device, client.get_sounds(device.host, device.port))
+    return listing
+
+
+def _store_sounds(device: Device, listing: dict) -> dict:
+    listing = {
+        "builtin": [s for s in listing.get("builtin", []) if isinstance(s, str)],
+        "clips": [c for c in listing.get("clips", []) if isinstance(c, dict) and isinstance(c.get("name"), str)],
+        "free_bytes": int(listing.get("free_bytes") or 0),
+    }
+    device.sounds = listing
+    device.last_seen = timezone.now()
+    device.save(update_fields=["sounds", "last_seen"])
+    return listing
+
+
+class UploadError(ValueError):
+    pass
+
+
+def upload_sound(device: Device, name: str, data: bytes, filename: str = "") -> dict:
+    """Convert `data` to 16 kHz mono WAV, check it fits, send it. Returns the new listing.
+
+    Raises UploadError (bad file / too big, a 400 for the caller) or client.DeviceError.
+    """
+    try:
+        wav = audio.convert(data, filename)
+    except audio.AudioError as err:
+        raise UploadError(str(err)) from None
+    seconds = audio.wav_seconds(wav)
+    if seconds < 0.05:
+        raise UploadError("that clip is silent or too short")
+    try:
+        listing = fetch_sounds(device)
+    except client.DeviceError:
+        listing = device.sounds or {}
+    free = int(listing.get("free_bytes") or 0)
+    replacing = next((c.get("bytes", 0) for c in listing.get("clips", []) if c.get("name") == name), 0)
+    if free and len(wav) > free + replacing:
+        fits = (free + replacing) / audio.BYTES_PER_SECOND
+        raise UploadError(
+            f"{seconds:.0f} s of audio is {audio.human_size(len(wav))}, but the board only has "
+            f"{audio.human_size(free + replacing)} free (about {fits:.0f} s). Trim the clip or delete another one."
+        )
+    return _store_sounds(device, client.upload_sound(device.host, device.port, name, wav))
+
+
+def delete_sound(device: Device, name: str) -> dict:
+    client.delete_sound(device.host, device.port, name)
+    return fetch_sounds(device)
+
+
+def common_sounds(devices: list[Device]) -> dict:
+    """Built-ins and clips every speaker-equipped board in `devices` has (for group targets)."""
+    able = [d for d in devices if d.features["speaker"]]
+    if not able:
+        return {"builtin": [], "clips": [], "any": False}
+    builtin = None
+    clips = None
+    for d in able:
+        b = set(d.sounds.get("builtin") or [])
+        c = {x["name"] for x in d.sounds.get("clips") or []}
+        builtin = b if builtin is None else builtin & b
+        clips = c if clips is None else clips & c
+    order = [s for s in BUILTIN_SOUNDS if s in builtin] + sorted(builtin - set(BUILTIN_SOUNDS))
+    return {"builtin": order, "clips": sorted(clips), "any": True}
 
 
 def rename(device: Device, name: str) -> dict:

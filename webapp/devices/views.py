@@ -5,9 +5,14 @@ from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_http_methods, require_POST
 
-from . import client, services, themes
+from django.conf import settings
+
+from . import audio, client, services, themes
 from .models import Device, Group, Scene
-from .validation import NAME_MAX, ValidationError, clean_action, clean_group, clean_name, clean_scene, clean_state
+from .validation import (BUILTIN_SOUNDS, NAME_MAX, SOUND_NAME_MAX, ValidationError, clean_action, clean_group,
+                         clean_name, clean_scene, clean_sound_name, clean_state, suggest_sound_name)
+
+SOUND_ACTIONS = {"sound", "tone", "stop_sound"}
 
 # Kept for callers that imported these from here.
 DEFAULT_THEMES = themes.DEFAULT_THEMES
@@ -43,8 +48,26 @@ def _device_json(d: Device):
         "themes": d.themes or DEFAULT_THEMES,
         "moods": d.moods,
         "preview": bool(d.preview_path),
+        "features": d.features,
+        "sounds": d.sounds if d.features["speaker"] else {},
         "groups": [g.pk for g in d.groups.all()],
     }
+
+
+def _sound_catalog(devices):
+    """Every sound any board knows (built-ins in their usual order, then clips), for the scene editor."""
+    builtin, clips = [], set()
+    for d in devices:
+        if not d.features["speaker"]:
+            continue
+        for s in d.sounds.get("builtin") or []:
+            if s not in builtin:
+                builtin.append(s)
+        clips.update(c["name"] for c in d.sounds.get("clips") or [] if isinstance(c, dict) and c.get("name"))
+    if not builtin and any(d.features["speaker"] for d in devices):
+        builtin = list(BUILTIN_SOUNDS)
+    builtin.sort(key=lambda s: BUILTIN_SOUNDS.index(s) if s in BUILTIN_SOUNDS else len(BUILTIN_SOUNDS))
+    return {"builtin": builtin, "clips": sorted(clips)}
 
 
 def _group_json(g: Group):
@@ -73,6 +96,10 @@ def _snapshot(**extra):
         "themes": themes.catalog(devices),
         "moods": ["neutral", "angry", "surprised", "sleepy", "asleep"],
         "name_max": NAME_MAX,
+        "sounds": _sound_catalog(devices),
+        "sound_name_max": SOUND_NAME_MAX,
+        "upload_accepts": audio.accepted_formats(),
+        "upload_any_format": audio.ffmpeg_path() is not None,
         **extra,
     }
 
@@ -180,6 +207,70 @@ def api_device_preview(request, device_id):
     return response
 
 
+def api_device_state(request, device_id):
+    """The board's state right now, straight through (for the live mic meter; nothing is stored)."""
+    device = get_object_or_404(Device, device_id=device_id)
+    try:
+        state = client.get_state(device.host, device.port)
+    except client.DeviceError as err:
+        return _error(str(err), 502)
+    return JsonResponse({"state": state})
+
+
+# --- JSON API: sounds ---
+
+def _sounds_ok(device):
+    if not device.features["speaker"]:
+        return _error("this board has no speaker (or its firmware predates sound)", 404)
+    return None
+
+
+@require_http_methods(["GET", "POST"])
+def api_device_sounds(request, device_id):
+    device = get_object_or_404(Device, device_id=device_id)
+    if (bad := _sounds_ok(device)) is not None:
+        return bad
+    if request.method == "GET":
+        try:
+            listing = services.fetch_sounds(device)
+        except client.DeviceError as err:
+            return _error(str(err), 502)
+        return JsonResponse({"sounds": listing})
+    upload = next(iter(request.FILES.values()), None)
+    if upload is None:
+        return _error("choose an audio file to upload")
+    if upload.size > settings.MAX_UPLOAD_BYTES:
+        return _error(f"that file is too large to convert (limit {audio.human_size(settings.MAX_UPLOAD_BYTES)})")
+    try:
+        name = clean_sound_name(request.POST.get("name") or suggest_sound_name(upload.name))
+    except ValidationError as err:
+        return _error(str(err))
+    if name in (device.sounds.get("builtin") or BUILTIN_SOUNDS):
+        return _error(f"“{name}” is a built-in sound; pick another name")
+    try:
+        listing = services.upload_sound(device, name, upload.read(), upload.name or "")
+    except services.UploadError as err:
+        return _error(str(err))
+    except client.DeviceError as err:
+        return _error(str(err), 502)
+    return JsonResponse({"sounds": listing, "name": name}, status=201)
+
+
+@require_http_methods(["DELETE"])
+def api_device_sound(request, device_id, name):
+    device = get_object_or_404(Device, device_id=device_id)
+    if (bad := _sounds_ok(device)) is not None:
+        return bad
+    try:
+        name = clean_sound_name(name)
+        listing = services.delete_sound(device, name)
+    except ValidationError as err:
+        return _error(str(err))
+    except client.DeviceError as err:
+        return _error(str(err), 502)
+    return JsonResponse({"sounds": listing})
+
+
 @require_POST
 def api_state(request):
     try:
@@ -199,6 +290,9 @@ def api_action(request):
         devices = services.resolve_targets(data.get("target"))
     except (ValidationError, services.TargetError) as err:
         return _error(str(err))
+    if payload["action"] in SOUND_ACTIONS and len(devices) > 1:
+        # A group or "all": only boards with a speaker get sound actions; silent ones aren't failures.
+        devices = [d for d in devices if d.features["speaker"]] or devices
     return JsonResponse({"results": services.apply_action(devices, payload)})
 
 

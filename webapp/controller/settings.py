@@ -127,3 +127,8 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # Device HTTP timeout (seconds) for proxied calls.
 DEVICE_TIMEOUT = float(os.environ.get("DEVICE_TIMEOUT", "3"))
+# Clip uploads to a board over Wi-Fi can take a while (a few MB into flash).
+DEVICE_UPLOAD_TIMEOUT = float(os.environ.get("DEVICE_UPLOAD_TIMEOUT", "90"))
+# Largest audio file accepted for conversion (bytes).
+MAX_UPLOAD_BYTES = int(os.environ.get("MAX_UPLOAD_BYTES", str(40 * 1024 * 1024)))
+DATA_UPLOAD_MAX_MEMORY_SIZE = MAX_UPLOAD_BYTES

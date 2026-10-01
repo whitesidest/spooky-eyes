@@ -8,7 +8,7 @@
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4l10.5-10.5a2.1 2.1 0 0 0-3-3L5 17z"/><path d="m13.5 6.5 3 3"/></svg>
     </button>
   </div>
-  <p id="board-status" class="status"><span class="dot"></span><span class="status-text"></span></p>
+  <p id="board-status" class="status"><span class="dot"></span><span class="status-text"></span><span id="board-battery" class="battery" hidden></span></p>
   <p id="name-note" class="muted small" hidden>Named here only — this board's firmware doesn't keep names.</p>
 </div>
 
@@ -59,6 +59,37 @@
   <label class="switch"><input type="checkbox" id="idle"><span class="track"></span><span>Idle animation (glances and blinks on its own)</span></label>
 </section>
 
+<section class="section sound" id="sound" hidden>
+  <div class="section-head">
+    <h2>Sound</h2>
+    <button type="button" class="btn btn-quiet" id="clips-edit" aria-pressed="false" hidden>Edit clips</button>
+    <button type="button" class="btn btn-ghost btn-stop" id="sound-stop" disabled>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>Stop
+    </button>
+  </div>
+  <label class="range range-volume">
+    <span class="sr-only">Volume</span>
+    <input type="range" id="volume" min="0" max="100" step="5">
+    <output id="volume-out"></output>
+  </label>
+  <p id="now-playing" class="now-playing muted small" hidden></p>
+  <div id="sound-board" class="sound-board" role="group" aria-label="Sounds"></div>
+  <div id="listen-block" class="listen" hidden>
+    <label class="switch"><input type="checkbox" id="listen"><span class="track"></span><span>React to noise (startle and glance toward loud sounds)</span></label>
+    <label class="range range-sens">
+      <span class="label">Sensitivity</span>
+      <input type="range" id="sensitivity" min="0" max="100" step="5">
+      <output id="sensitivity-out"></output>
+    </label>
+    <div class="meter" id="meter" role="meter" aria-label="Room noise" aria-valuemin="-90" aria-valuemax="0" aria-valuenow="-90">
+      <span class="meter-label">Room noise</span>
+      <div class="meter-track"><div class="meter-fill"></div><div class="meter-tick" title="Reacts above this level"></div></div>
+      <output class="meter-out">—</output>
+    </div>
+  </div>
+  <p id="sound-storage" class="muted small"></p>
+</section>
+
 <section class="section">
   <div class="section-head">
     <h2>Gaze</h2>
@@ -95,6 +126,7 @@
       <dt>Board id</dt><dd id="diag-id"></dd>
       <dt>Firmware</dt><dd id="diag-fw"></dd>
       <dt>Model</dt><dd id="diag-model"></dd>
+      <dt>Battery</dt><dd id="diag-battery"></dd>
       <dt>Wi-Fi signal</dt><dd id="diag-rssi"></dd>
       <dt>Frame rate</dt><dd id="diag-fps"></dd>
       <dt>Uptime</dt><dd id="diag-uptime"></dd>
@@ -105,6 +137,23 @@
     </div>
   </div>
 </details>
+
+<dialog id="clip-dialog" class="sheet">
+  <form method="dialog" autocomplete="off">
+    <h2>Add a clip</h2>
+    <p class="muted small" id="clip-file-note"></p>
+    <label class="field">
+      <span>Name on the board (a–z, 0–9, _ and -, up to {{ snapshot.sound_name_max }})</span>
+      <input class="input" name="name" maxlength="{{ snapshot.sound_name_max }}" pattern="[a-z0-9_\-]{1,24}" required spellcheck="false" autocapitalize="off">
+    </label>
+    <p class="muted small">It's converted to 16 kHz mono before it goes over, so about 32 kB per second of sound.</p>
+    <div class="dialog-actions">
+      <button type="button" class="btn btn-ghost" data-close>Cancel</button>
+      <button type="submit" class="btn btn-primary">Upload</button>
+    </div>
+  </form>
+</dialog>
+<input type="file" id="clip-file" class="sr-only" accept="{% if snapshot.upload_any_format %}audio/*,.mp3,.m4a,.wav,.ogg,.flac,.aac{% else %}audio/wav,.wav{% endif %}" tabindex="-1">
 
 <dialog id="rename-dialog" class="sheet">
   <form method="dialog">

@@ -106,8 +106,16 @@ vanilla JS/CSS, no build step, no CDN.
 - **Board**: visual theme gallery by category (thumbnails rendered by `tools/preview`, shipped as
   static assets, regenerated with `manage.py render_theme_thumbs`), mood, actions, idle toggle,
   inline gaze pad, rename, save-as-scene, diagnostics drawer.
-- **Puppeteer**: full-screen gaze pad + big action buttons aimed at one board, a group or all.
-- **Scenes & groups**: created, edited and applied in the app (no admin needed).
+- **Sound** (boards whose `/api/info` reports `features.speaker`): volume, a tap-to-play board of
+  built-in effects and uploaded clips, Stop, clip upload (converted server-side to 16 kHz mono
+  16-bit WAV with ffmpeg, or in pure Python for WAV input, checked against the board's
+  `free_bytes`) and delete, "React to noise" + sensitivity with a live mic-level meter (polled
+  only while visible). Battery badge (percent/voltage, red under 20 %) on cards, the board head and
+  diagnostics. Older firmware without these fields simply doesn't get the UI.
+- **Puppeteer**: full-screen gaze pad + big action buttons aimed at one board, a group or all, plus
+  a sound strip (built-ins and the clips every targeted board shares).
+- **Scenes & groups**: created, edited and applied in the app (no admin needed); a scene can set
+  volume and play a sound as its follow-up action.
 - Board naming uses the firmware contract (`POST /api/state {"name": ...}`, 1–32 chars, echoed in
   `/api/info` and state); boards that reject or ignore it get a name stored locally instead.
 - Talks to devices over the same REST API as HA; no extra firmware endpoints needed.

@@ -56,3 +56,34 @@ def set_state(host: str, port: int, state: dict) -> dict:
 
 def action(host: str, port: int, payload: dict) -> dict:
     return _request("POST", host, port, "/api/action", json=payload)
+
+
+# --- Sounds (firmware with features.speaker) ---
+
+def get_sounds(host: str, port: int) -> dict:
+    """{"builtin": [...], "clips": [{"name", "bytes"}], "free_bytes": N}"""
+    return _request("GET", host, port, "/api/sounds")
+
+
+def upload_sound(host: str, port: int, name: str, wav: bytes) -> dict:
+    """Multipart upload of a 16-bit PCM WAV; the board answers with its sound listing."""
+    url = _url(host, port, f"/api/sounds?name={name}")
+    timeout = max(settings.DEVICE_TIMEOUT, settings.DEVICE_UPLOAD_TIMEOUT)
+    try:
+        resp = httpx.post(url, files={"file": (f"{name}.wav", wav, "audio/wav")}, timeout=timeout)
+    except httpx.HTTPError as err:
+        raise DeviceError(f"{host}: {err.__class__.__name__}") from err
+    if resp.status_code >= 400:
+        try:
+            detail = resp.json().get("error", resp.text)
+        except ValueError:
+            detail = resp.text
+        raise DeviceError(f"{host}: HTTP {resp.status_code} {detail}".strip())
+    try:
+        return resp.json()
+    except ValueError as err:
+        raise DeviceError(f"{host}: invalid JSON") from err
+
+
+def delete_sound(host: str, port: int, name: str) -> dict:
+    return _request("DELETE", host, port, f"/api/sounds?name={name}")

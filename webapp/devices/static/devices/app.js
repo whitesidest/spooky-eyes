@@ -11,8 +11,90 @@ const SE = (() => {
 
   const MOODS = snapshot.moods || ["neutral", "angry", "surprised", "sleepy", "asleep"];
   const MOOD_LABELS = { neutral: "Neutral", angry: "Angry", surprised: "Surprised", sleepy: "Sleepy", asleep: "Asleep" };
-  const ACTION_LABELS = { blink: "Blink", wink_left: "Wink left", wink_right: "Wink right", startle: "Startle", roll: "Eye roll", release: "Release" };
-  const ACTION_DONE = { blink: "Blinked", wink_left: "Winked left", wink_right: "Winked right", startle: "Startled", roll: "Rolled", release: "Released" };
+  const ACTION_LABELS = { blink: "Blink", wink_left: "Wink left", wink_right: "Wink right", startle: "Startle", roll: "Eye roll", release: "Release", sound: "Sound", tone: "Tone", stop_sound: "Stop sound" };
+  const ACTION_DONE = { blink: "Blinked", wink_left: "Winked left", wink_right: "Winked right", startle: "Startled", roll: "Rolled", release: "Released", stop_sound: "Silenced" };
+
+  // ---------- Sounds: friendly names and glyphs for the built-in effects ----------
+  const SOUND_LABELS = { growl: "Growl", heartbeat: "Heartbeat", whisper: "Whisper", creak: "Creak", zap: "Zap", chime: "Chime", test: "Test tone" };
+  const soundLabel = (name) => SOUND_LABELS[name] || name;
+  const GLYPHS = {
+    growl: '<path d="M4 9c4-4 12-4 16 0"/><path d="m5 9 2 5 2-5 3 6 3-6 2 5 2-5"/>',
+    heartbeat: '<path d="M3 12h4l2-5 3 10 2-7 1.5 2H21"/>',
+    whisper: '<path d="M3 13c3-2 15-2 18 0"/><path d="M3 13c3 2 15 2 18 0"/><path d="M8 7c1-1 2-1 3 0M13 7c1-1 2-1 3 0"/>',
+    creak: '<path d="M5 3h9v18H5z"/><path d="M14 3l5 2v16l-5-2"/><circle cx="11" cy="12" r=".6"/>',
+    zap: '<path d="M13 2 4 14h7l-1 8 9-12h-7z"/>',
+    chime: '<path d="M6 17h12l-1.5-2v-4a4.5 4.5 0 0 0-9 0v4z"/><path d="M10 20a2 2 0 0 0 4 0M12 3v1.5"/>',
+    test: '<path d="M3 12c3-7 6-7 9 0s6 7 9 0"/>',
+    clip: '<path d="M4 10v4M8 7v10M12 4v16M16 8v8M20 11v2"/>',
+    speaker: '<path d="M4 10v4h3l4 3V7l-4 3z"/><path d="M15 9a4 4 0 0 1 0 6M18 6a8 8 0 0 1 0 12"/>',
+    stop: '<rect x="6" y="6" width="12" height="12" rx="2"/>',
+    plus: '<path d="M12 5v14M5 12h14"/>',
+    trash: '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>',
+  };
+  const glyph = (name, cls) => `<svg class="${cls || ""}" viewBox="0 0 24 24" aria-hidden="true">${GLYPHS[name] || GLYPHS.clip}</svg>`;
+
+  // Battery badge: {voltage, percent} or null. Hidden when the board has no cell.
+  function paintBattery(el, battery) {
+    if (!el) return;
+    const b = battery && typeof battery.percent === "number" ? battery : null;
+    el.hidden = !b;
+    if (!b) return;
+    const pct = Math.max(0, Math.min(100, Math.round(b.percent)));
+    el.classList.toggle("low", pct < 20);
+    el.innerHTML = `<svg viewBox="0 0 24 14" aria-hidden="true"><rect x="0.75" y="0.75" width="19.5" height="12.5" rx="2.5"/><rect x="21.5" y="4.5" width="2" height="5" rx="1" class="charge"/><rect class="charge" x="3" y="3" width="${(15 * pct) / 100}" height="8" rx="1"/></svg><span></span>`;
+    $("span", el).textContent = `${pct}%`;
+    el.title = `Battery ${pct}%${b.voltage ? `, ${Number(b.voltage).toFixed(2)} V` : ""}${pct < 20 ? " — low" : ""}`;
+    el.setAttribute("aria-label", el.title);
+  }
+  const batteryText = (b) => (b && typeof b.percent === "number" ? `${Math.round(b.percent)}% (${Number(b.voltage || 0).toFixed(2)} V)${b.percent < 20 ? ", low" : ""}` : "No battery");
+
+  // Builds sound tiles into `host`: built-ins, then clips, then (optionally) an "Add clip" tile.
+  // Returns { setPlaying(name) }. Tiles call onPlay(name); clip delete marks call onDelete(name).
+  function soundTiles(host, { builtin = [], clips = [], onPlay, onDelete, onAdd, small }) {
+    host.innerHTML = "";
+    const make = (name, isClip, bytes) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "sound-tile" + (isClip ? " clip" : "");
+      b.dataset.sound = name;
+      b.setAttribute("aria-pressed", "false");
+      b.innerHTML = glyph(isClip ? "clip" : name) + `<span></span>` + (isClip && bytes ? `<small>${(bytes / 32000).toFixed(bytes < 320000 ? 1 : 0)} s</small>` : "");
+      $("span", b).textContent = isClip ? name : soundLabel(name);
+      b.addEventListener("click", () => {
+        b.setAttribute("aria-busy", "true");
+        Promise.resolve(onPlay(name)).finally(() => b.removeAttribute("aria-busy"));
+      });
+      if (isClip && onDelete) {
+        // A delete mark can't live inside the tile's <button>, so the clip gets a slot holding both.
+        const slot = document.createElement("div");
+        slot.className = "sound-slot";
+        const del = document.createElement("button");
+        del.type = "button";
+        del.className = "del";
+        del.setAttribute("aria-label", `Delete clip ${name}`);
+        del.innerHTML = glyph("trash");
+        del.addEventListener("click", () => onDelete(name));
+        slot.append(b, del);
+        return slot;
+      }
+      return b;
+    };
+    for (const s of builtin) host.appendChild(make(s, false));
+    for (const c of clips) host.appendChild(make(typeof c === "string" ? c : c.name, true, typeof c === "string" ? 0 : c.bytes));
+    if (onAdd) {
+      const add = document.createElement("button");
+      add.type = "button";
+      add.className = "sound-tile add";
+      add.innerHTML = glyph("plus") + `<span>Add clip</span>`;
+      add.addEventListener("click", onAdd);
+      host.appendChild(add);
+    }
+    return {
+      setPlaying(name) {
+        $$(".sound-tile[data-sound]", host).forEach((t) => t.setAttribute("aria-pressed", String(!!name && t.dataset.sound === name)));
+      },
+    };
+  }
 
   // ---------- Themes ----------
   const themes = new Map((snapshot.themes || []).map((t) => [t.id, t]));
@@ -258,6 +340,13 @@ const SE = (() => {
       dot.className = `dot ${d.online ? "on" : "off"}`;
       $(".status-text", card).textContent = d.online ? (s.on === false ? "Off" : "On") : "Offline";
       $(".look", card).textContent = d.online ? describe(s) : d.host;
+      const playing = $(".playing", card);
+      playing.hidden = !(d.online && s.playing);
+      if (s.playing) {
+        playing.innerHTML = glyph("speaker") + `<span></span>`;
+        $("span", playing).textContent = soundLabel(s.playing);
+      }
+      paintBattery($(".battery", card), d.online ? s.battery : null);
       const sw = $(".power input", card);
       if (document.activeElement !== sw) sw.checked = s.on !== false && d.online;
       sw.disabled = !d.online;
@@ -440,8 +529,199 @@ const SE = (() => {
       $("#diag-rssi").textContent = s.rssi ? `${s.rssi} dBm` : "—";
       $("#diag-fps").textContent = s.fps !== undefined ? `${s.fps} fps` : "—";
       $("#diag-uptime").textContent = uptime(s.uptime);
+      $("#diag-battery").textContent = s.battery === undefined ? "—" : batteryText(s.battery);
+      paintBattery($("#board-battery"), device.online ? s.battery : null);
       $("#name-note").hidden = !device.name_is_local;
       $$("[data-needs-online]").forEach((el) => el.classList.toggle("hidden", !device.online));
+      paintSound(s);
+    }
+
+    // ---- Sound (only when the firmware reports a speaker) ----
+    const sound = $("#sound");
+    const features = () => device.features || {};
+    let tiles = null;
+    let soundsListing = device.sounds || {};
+    const volume = $("#volume");
+    const sens = $("#sensitivity");
+    const listen = $("#listen");
+    const meter = $("#meter");
+    const threshold = (sensitivity) => -18 - 0.4 * (sensitivity ?? 50); // dBFS, same curve as the firmware
+    const dbToPct = (db) => Math.max(0, Math.min(100, ((db + 90) / 90) * 100));
+
+    function paintSound(s) {
+      const f = features();
+      sound.hidden = !f.speaker;
+      if (!f.speaker) return;
+      if (document.activeElement !== volume && s.volume !== undefined) {
+        volume.value = s.volume;
+        syncRange(volume);
+        $("#volume-out").textContent = `${s.volume}%`;
+      }
+      const stop = $("#sound-stop");
+      stop.disabled = !s.playing;
+      const now = $("#now-playing");
+      now.hidden = !s.playing;
+      if (s.playing) {
+        now.innerHTML = `<span class="wave" aria-hidden="true"><i></i><i></i><i></i><i></i></span><span></span>`;
+        $("span:last-child", now).textContent = `Playing ${soundLabel(s.playing)}`;
+      }
+      tiles?.setPlaying(s.playing);
+      $("#listen-block").hidden = !f.microphone;
+      if (f.microphone) {
+        if (document.activeElement !== listen) listen.checked = !!s.listen;
+        if (document.activeElement !== sens && s.sensitivity !== undefined) {
+          sens.value = s.sensitivity;
+          syncRange(sens);
+          $("#sensitivity-out").textContent = `${s.sensitivity}`;
+        }
+        paintLevel(s);
+      }
+      const free = soundsListing.free_bytes;
+      $("#sound-storage").textContent = free !== undefined ? `${(free / 1e6).toFixed(1)} MB free on the board, about ${Math.floor(free / 32000)} s of clips` : "";
+    }
+    function paintLevel(s) {
+      const db = typeof s.sound_level === "number" ? s.sound_level : -90;
+      const th = threshold(s.sensitivity);
+      $(".meter-fill", meter).style.width = `${dbToPct(db)}%`;
+      $(".meter-tick", meter).style.left = `${dbToPct(th)}%`;
+      $(".meter-out", meter).textContent = `${Math.round(db)} dB`;
+      meter.setAttribute("aria-valuenow", String(Math.round(db)));
+      meter.classList.toggle("loud", s.listen && db > th);
+      meter.classList.toggle("quiet", db <= -80);
+      meter.classList.toggle("off", !s.listen);
+    }
+    function buildTiles() {
+      tiles = soundTiles($("#sound-board"), {
+        builtin: soundsListing.builtin || [],
+        clips: soundsListing.clips || [],
+        onPlay: (name) =>
+          sendAction(target, { action: "sound", name })
+            .then(() => {
+              device.state = { ...device.state, playing: name };
+              paintSound(device.state);
+            })
+            .catch(fail),
+        onDelete: (name) => {
+          if (!confirm(`Delete the clip “${name}” from ${device.name}?`)) return;
+          api(`/api/devices/${id}/sounds/${encodeURIComponent(name)}`, null, "DELETE")
+            .then((r) => {
+              soundsListing = r.sounds;
+              device.sounds = r.sounds;
+              buildTiles();
+              paintSound(device.state || {});
+              toast(`Deleted “${name}”`, "good");
+            })
+            .catch(fail);
+        },
+        onAdd: () => $("#clip-file").click(),
+      });
+      tiles.setPlaying(device.state?.playing);
+      $("#clips-edit").hidden = !(soundsListing.clips || []).length;
+      if (!(soundsListing.clips || []).length) setEditing(false);
+    }
+    const setEditing = (on) => {
+      $("#clips-edit").setAttribute("aria-pressed", String(on));
+      $("#clips-edit").textContent = on ? "Done" : "Edit clips";
+      $("#sound-board").classList.toggle("editing", on);
+    };
+    $("#clips-edit").addEventListener("click", () => setEditing($("#clips-edit").getAttribute("aria-pressed") !== "true"));
+    $("#sound-stop").addEventListener("click", () =>
+      sendAction(target, { action: "stop_sound" }, "Silenced")
+        .then(() => ((device.state = { ...device.state, playing: null }), paintSound(device.state)))
+        .catch(fail)
+    );
+    volume.addEventListener("input", () => (syncRange(volume), ($("#volume-out").textContent = `${volume.value}%`)));
+    volume.addEventListener("change", () => optimistic({ volume: +volume.value }));
+    listen.addEventListener("change", (e) => optimistic({ listen: e.target.checked }));
+    sens.addEventListener("input", () => {
+      syncRange(sens);
+      $("#sensitivity-out").textContent = sens.value;
+      paintLevel({ ...device.state, sensitivity: +sens.value });
+    });
+    sens.addEventListener("change", () => optimistic({ sensitivity: +sens.value }));
+
+    // Upload a clip: pick a file, confirm the name, send it (the server converts it).
+    const clipFile = $("#clip-file");
+    const clipDialog = $("#clip-dialog");
+    const clipForm = $("form", clipDialog);
+    const suggestName = (filename) =>
+      (filename || "clip")
+        .replace(/\.[^.]+$/, "")
+        .toLowerCase()
+        .replace(/[^a-z0-9_-]+/g, "_")
+        .replace(/^[_-]+|[_-]+$/g, "")
+        .slice(0, snapshot.sound_name_max || 24) || "clip";
+    clipFile.addEventListener("change", () => {
+      const file = clipFile.files[0];
+      if (!file) return;
+      $("#clip-file-note").textContent = `${file.name} (${(file.size / 1e6).toFixed(1)} MB)`;
+      clipForm.name.value = suggestName(file.name);
+      clipDialog.showModal();
+      clipForm.name.select();
+    });
+    clipForm.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const file = clipFile.files[0];
+      if (!file) return clipDialog.close();
+      const name = clipForm.name.value.trim();
+      const body = new FormData();
+      body.append("name", name);
+      body.append("file", file, file.name);
+      const btn = $("button[type=submit]", clipForm);
+      btn.setAttribute("aria-busy", "true");
+      btn.textContent = "Converting and uploading…";
+      fetch(`/api/devices/${id}/sounds`, { method: "POST", headers: { "X-CSRFToken": csrf() }, body })
+        .then(async (res) => {
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+          soundsListing = data.sounds;
+          device.sounds = data.sounds;
+          buildTiles();
+          paintSound(device.state || {});
+          clipDialog.close();
+          toast(`Added “${data.name}”`, "good");
+        })
+        .catch(fail)
+        .finally(() => {
+          btn.removeAttribute("aria-busy");
+          btn.textContent = "Upload";
+          clipFile.value = "";
+        });
+    });
+
+    // The mic meter polls the board's live state a few times a second, but only while on screen.
+    let levelTimer = null;
+    const pollLevel = () => {
+      if (document.hidden || !features().microphone || !device.online) return;
+      api(`/api/devices/${id}/state`)
+        .then((r) => {
+          device.state = { ...device.state, ...r.state };
+          paintLevel(device.state);
+          const stop = $("#sound-stop");
+          stop.disabled = !device.state.playing;
+          $("#now-playing").hidden = !device.state.playing;
+          if (device.state.playing) $("#now-playing span:last-child").textContent = `Playing ${soundLabel(device.state.playing)}`;
+          tiles?.setPlaying(device.state.playing);
+          paintBattery($("#board-battery"), device.state.battery);
+        })
+        .catch(() => {});
+    };
+    if ("IntersectionObserver" in window) {
+      new IntersectionObserver(
+        (entries) => {
+          const visible = entries.some((e) => e.isIntersecting);
+          clearInterval(levelTimer);
+          levelTimer = visible ? setInterval(pollLevel, 350) : null;
+          if (visible) pollLevel();
+        },
+        { threshold: 0.05 }
+      ).observe($("#listen-block"));
+    }
+    if (features().speaker) {
+      buildTiles();
+      api(`/api/devices/${id}/sounds`)
+        .then((r) => ((soundsListing = r.sounds), (device.sounds = r.sounds), buildTiles(), paintSound(device.state || {})))
+        .catch(() => {});
     }
 
     const apply = (state, undo) =>
@@ -592,8 +872,51 @@ const SE = (() => {
       }
       const n = targetCount(target, devices, groups);
       $("#target-count").textContent = n === 1 ? "1 board" : `${n} boards`;
+      showSounds(target, ids);
     }
-    const getTarget = targetChips($("#targets"), devices, groups, showLive, initial);
+
+    // Sound strip: the target's built-ins + clips; for a group, only what every speaker-board shares.
+    const strip = $("#sound-strip");
+    function showSounds(target, ids) {
+      const able = devices.filter((d) => ids.includes(d.device_id) && d.features?.speaker);
+      $("#sound-strip-wrap").hidden = !able.length;
+      if (!able.length) return;
+      let builtin = null, clips = null;
+      for (const d of able) {
+        const b = new Set(d.sounds?.builtin || []), c = new Set((d.sounds?.clips || []).map((x) => x.name));
+        builtin = builtin ? new Set([...builtin].filter((x) => b.has(x))) : b;
+        clips = clips ? new Set([...clips].filter((x) => c.has(x))) : c;
+      }
+      const order = Object.keys(SOUND_LABELS);
+      const names = [...builtin].sort((a, b) => (order.indexOf(a) + 99) % 99 - (order.indexOf(b) + 99) % 99).concat([...clips].sort());
+      const n = targetCount(target, devices, groups);
+      $("#sound-strip-note").textContent = able.length < n ? `${able.length} of ${n} boards have a speaker` : "";
+      strip.innerHTML = "";
+      const stop = document.createElement("button");
+      stop.type = "button";
+      stop.className = "chip stop";
+      stop.innerHTML = glyph("stop") + "Stop";
+      stop.addEventListener("click", () => sendAction(getTarget(), { action: "stop_sound" }, "Silenced").catch(fail));
+      strip.appendChild(stop);
+      for (const name of names) {
+        const chip = document.createElement("button");
+        chip.type = "button";
+        chip.className = "chip";
+        chip.dataset.sound = name;
+        chip.setAttribute("aria-pressed", "false");
+        chip.innerHTML = glyph(builtin.has(name) ? name : "clip");
+        chip.append(document.createTextNode(soundLabel(name)));
+        chip.addEventListener("click", () => {
+          $$(".chip[data-sound]", strip).forEach((c) => c.setAttribute("aria-pressed", String(c === chip)));
+          sendAction(getTarget(), { action: "sound", name }, `${soundLabel(name)} on`)
+            .catch(fail)
+            .finally(() => setTimeout(() => chip.setAttribute("aria-pressed", "false"), 1800));
+        });
+        strip.appendChild(chip);
+      }
+    }
+    let getTarget = () => ({ all: true });
+    getTarget = targetChips($("#targets"), devices, groups, showLive, initial);
     showLive(getTarget());
 
     const padEl = $("#pad");
@@ -637,8 +960,11 @@ const SE = (() => {
       if (st.on === false) parts.push("off");
       else if (st.brightness !== undefined) parts.push(`${pct(st.brightness)} bright`);
       if (st.autonomous === false) parts.push("idle off");
+      if (st.volume !== undefined) parts.push(`volume ${st.volume}%`);
+      if (st.listen !== undefined) parts.push(st.listen ? "reacts to noise" : "ignores noise");
       if (s.action?.action === "look") parts.push(`look ${s.action.x >= 0 ? "right" : "left"}${s.action.duration ? ` ${s.action.duration}s` : ""}`);
-      else if (s.action?.action) parts.push(ACTION_LABELS[s.action.action].toLowerCase());
+      else if (s.action?.action === "sound") parts.push(`play ${soundLabel(s.action.name)}`);
+      else if (s.action?.action) parts.push((ACTION_LABELS[s.action.action] || s.action.action).toLowerCase());
       return parts.join(", ") || "Nothing set";
     }
 
@@ -708,6 +1034,21 @@ const SE = (() => {
     briRange.addEventListener("input", () => (syncRange(briRange), ($("#scene-bri-out").textContent = pct(+briRange.value))));
     sceneForm.set_brightness.addEventListener("change", () => (briRange.disabled = !sceneForm.set_brightness.checked));
     sceneForm.set_look.addEventListener("change", () => ($("#look-fields").hidden = !sceneForm.set_look.checked));
+    const volRange = sceneForm.volume; // only when some board has a speaker
+    if (volRange) {
+      volRange.addEventListener("input", () => (syncRange(volRange), ($("#scene-vol-out").textContent = `${volRange.value}%`)));
+      sceneForm.set_volume.addEventListener("change", () => (volRange.disabled = !sceneForm.set_volume.checked));
+      // Friendly names for the built-in sounds in the "Then" list.
+      $$("#after-sounds option").forEach((o) => {
+        const name = o.value.slice("sound:".length);
+        if (SOUND_LABELS[name]) o.textContent = SOUND_LABELS[name];
+      });
+    }
+    // A saved sound the list doesn't know yet (clip deleted or on another board) still shows up when editing.
+    const ensureAfterOption = (value, label) => {
+      if (!value || [...sceneForm.after.options].some((o) => o.value === value)) return;
+      sceneForm.after.appendChild(new Option(label, value));
+    };
 
     function openScene(s, draft) {
       editing = s;
@@ -727,11 +1068,20 @@ const SE = (() => {
       briRange.value = st.brightness ?? 200;
       syncRange(briRange);
       $("#scene-bri-out").textContent = pct(+briRange.value);
+      if (volRange) {
+        sceneForm.set_volume.checked = st.volume !== undefined;
+        volRange.disabled = st.volume === undefined;
+        volRange.value = st.volume ?? 70;
+        syncRange(volRange);
+        $("#scene-vol-out").textContent = `${volRange.value}%`;
+      }
       const a = s?.action;
       sceneForm.set_look.checked = a?.action === "look";
       $("#look-fields").hidden = a?.action !== "look";
       sceneForm.duration.value = a?.action === "look" ? a.duration : 5;
-      sceneForm.after.value = a && a.action !== "look" ? a.action : "";
+      const afterValue = !a || a.action === "look" ? "" : a.action === "sound" ? `sound:${a.name}` : a.action;
+      ensureAfterOption(afterValue, a?.action === "sound" ? `${soundLabel(a.name)} (clip)` : ACTION_LABELS[a?.action] || afterValue);
+      sceneForm.after.value = afterValue;
       if (!lookPad) {
         lookPad = gazePad($("#look-pad"), { onMove: () => {}, onEnd: () => {} });
         $("#look-pad").addEventListener("gaze", (e) => ($("#look-readout").textContent = `x ${e.detail.x.toFixed(2)}  y ${e.detail.y.toFixed(2)}`));
@@ -750,8 +1100,10 @@ const SE = (() => {
       if (f.power.value) state.on = f.power.value === "on";
       if (f.idle.value) state.autonomous = f.idle.value === "on";
       if (f.set_brightness.checked) state.brightness = +f.brightness.value;
+      if (f.volume && f.set_volume.checked) state.volume = +f.volume.value;
       let action = null;
       if (f.set_look.checked) action = { action: "look", x: +lookPad.pos.x.toFixed(2), y: +lookPad.pos.y.toFixed(2), duration: +f.duration.value || 0 };
+      else if (f.after.value.startsWith("sound:")) action = { action: "sound", name: f.after.value.slice("sound:".length) };
       else if (f.after.value) action = { action: f.after.value };
       const body = { name: f.name.value, group: f.group.value || null, state, action };
       const req = editing ? api(`/api/scenes/${editing.id}`, body, "PUT") : api("/api/scenes", body);
