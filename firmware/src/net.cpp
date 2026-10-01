@@ -26,6 +26,7 @@ AsyncWebServer server(80);
 AsyncWebSocket ws("/ws");
 bool online = false;
 uint32_t pushedVersion = 0;
+uint32_t pushedNoises = 0;
 uint32_t lastPushMs = 0;
 String hostname;
 
@@ -211,6 +212,16 @@ void loop() {
     return;
   }
   ArduinoOTA.handle();
+  float dir;
+  uint32_t noises = engine::noiseEventCount(&dir);
+  if (noises != pushedNoises) {
+    pushedNoises = noises;
+    if (ws.count()) {
+      char msg[96];
+      snprintf(msg, sizeof msg, "{\"type\":\"event\",\"event\":\"noise\",\"direction\":%.2f}", dir);
+      ws.textAll(msg);
+    }
+  }
   uint32_t v = engine::stateVersion();
   if ((v != pushedVersion || millis() - lastPushMs > kPeriodicPushMs) && ws.count()) {
     ws.textAll(stateMessage());

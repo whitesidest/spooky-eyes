@@ -267,7 +267,10 @@ void listenBlock() {
   levelDb = db > levelDb ? db : levelDb * 0.9f + db * 0.1f;
   if (db > maxDbSinceCheck) {
     maxDbSinceCheck = db;
-    direction = (lr + rr) > 1 ? (rr - lr) / (rr + lr) : 0;
+    // Only trust left/right when both channels carry a microphone (on the DualEye the second
+    // I2S slot is ~25 dB down, i.e. effectively one mic), otherwise report "unknown" (0).
+    const float lo = lr < rr ? lr : rr, hi = lr < rr ? rr : lr;
+    direction = (hi > 1 && lo > hi * 0.2f) ? (rr - lr) / (rr + lr) : 0;
   }
 }
 

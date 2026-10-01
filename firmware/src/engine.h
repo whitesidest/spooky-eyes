@@ -17,6 +17,8 @@ void writeDebug(JsonObject out);  // render timings + optional startup benchmark
 
 // Incremented whenever user-visible state changes (for push notifications).
 uint32_t stateVersion();
+// Number of loud noises heard so far (and the direction of the latest, -1 left .. +1 right).
+uint32_t noiseEventCount(float* direction);
 
 const String& deviceId();   // 12 lowercase hex digits of the MAC
 const String& deviceName();

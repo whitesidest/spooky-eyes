@@ -50,6 +50,8 @@ uint32_t lastChangeMs = 0;
 volatile float fps = 0;
 
 SemaphoreHandle_t workGo, workDone;
+volatile uint32_t noiseEvents = 0;
+volatile float noiseDirection = 0;
 String id, name;
 
 struct Guard {
@@ -283,12 +285,17 @@ void loop() {
     listen = cfg.listen;
     threshold = listenThresholdDb(cfg.sensitivity);
   }
-  if (listen && audio::takeLoudEvent(threshold, &dir)) {
-    // Something went bump: jump, then stare toward it for a moment.
-    Guard g;
-    ctl.startle();
-    ctl.look(dir * 0.9f, 0.05f, 2.5f);
-    changed();
+  if (audio::takeLoudEvent(threshold, &dir)) {
+    // Every loud noise is reported (WebSocket "noise" event for Home Assistant automations);
+    // with listen on, the eyes also jump and stare toward it for a moment.
+    noiseDirection = dir;
+    noiseEvents = noiseEvents + 1;
+    if (listen) {
+      Guard g;
+      ctl.startle();
+      if (dir != 0) ctl.look(dir * 0.9f, 0.05f, 2.5f);
+      changed();
+    }
   }
   static uint32_t lastLog = 0;
   if (millis() - lastLog > 5000) {
@@ -510,6 +517,11 @@ void writeDebug(JsonObject out) {
 }
 
 uint32_t stateVersion() { return version; }
+
+uint32_t noiseEventCount(float* direction) {
+  *direction = noiseDirection;
+  return noiseEvents;
+}
 
 const String& deviceId() { return id; }
 
