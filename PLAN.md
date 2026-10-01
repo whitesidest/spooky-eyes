@@ -8,7 +8,7 @@ firmware/                 PlatformIO (pioarduino / Arduino-ESP32 v3, IDF 5) firm
   src/render/             portable C++ renderer + behaviour engine (no Arduino deps)
 tools/preview/            native build of the renderer -> PNG/GIF previews (no hardware needed)
 custom_components/spooky_eyes/   HACS integration (domain: spooky_eyes)
-webapp/                   Django web controller (fleet dashboard, live gaze pad, groups/scenes)
+webapp/                   Django web controller (fleet home, board screen, puppeteer, scenes & groups)
 tests/                    pytest suite for the integration
 hacs.json
 ```
@@ -55,7 +55,7 @@ TXT: `id=<mac hex>`, `model=dualeye-1.28`, `fw=<version>`.
 |---|---|---|
 | GET | `/api/info` | `{id, name, model, fw, mac, ip, themes:[{id,name}], moods:[...], eyes:2}` |
 | GET | `/api/state` | state object (below) |
-| POST | `/api/state` | partial state object → returns full state |
+| POST | `/api/state` | partial state object → returns full state; `{"name": "Porch skull"}` (1-32 chars) renames the board |
 | POST | `/api/action` | `{action, ...}` → `{ok:true}` |
 | GET (WS) | `/ws` | server pushes `{"type":"state","state":{...}}` on every change; client may send `{"type":"state",...partial}` or `{"type":"action",...}` |
 | POST | `/update` | OTA firmware upload (multipart) |
@@ -63,6 +63,7 @@ TXT: `id=<mac hex>`, `model=dualeye-1.28`, `fw=<version>`.
 State object:
 ```json
 {
+  "name": "Porch skull",    // board name (also in /api/info)
   "on": true,               // displays + backlight on
   "brightness": 200,        // 0-255 backlight
   "theme": "sauron",
@@ -95,13 +96,21 @@ until released), `release` (return to autonomous gaze), `startle`, `roll` (eye r
 ## Web controller (`webapp/`, Python + Django)
 
 A standalone companion to HA for hands-on control of the whole fleet (HA stays the automation
-brain). The device itself serves only the JSON API; all UI lives here.
+brain). The device itself serves only the JSON API; all UI lives here. Built phone-first for use
+outdoors at night (one-handed, big targets, dark, only the eyes glow); server-rendered Django with
+vanilla JS/CSS, no build step, no CDN.
 
 - Device registry: zeroconf discovery (`_spookyeyes._tcp`) + manual add; online status.
-- Dashboard: every board as a card — power, brightness, theme, mood, idle toggle, action buttons.
-- Live gaze pad: drag to steer one board or a whole group in real time (proxied over the device WS).
-- Groups & scenes: named sets of boards, one-click scenes ("all Sauron, angry, looking at door").
-- Talks to devices over the same REST/WS API as HA; no extra firmware endpoints needed.
+- **Boards** (home): a card per board with a picture of its current theme (or the live view of a
+  simulator), power, brightness, blink/startle; whole-fleet buttons; one-tap scenes; first-run guide.
+- **Board**: visual theme gallery by category (thumbnails rendered by `tools/preview`, shipped as
+  static assets, regenerated with `manage.py render_theme_thumbs`), mood, actions, idle toggle,
+  inline gaze pad, rename, save-as-scene, diagnostics drawer.
+- **Puppeteer**: full-screen gaze pad + big action buttons aimed at one board, a group or all.
+- **Scenes & groups**: created, edited and applied in the app (no admin needed).
+- Board naming uses the firmware contract (`POST /api/state {"name": ...}`, 1–32 chars, echoed in
+  `/api/info` and state); boards that reject or ignore it get a name stored locally instead.
+- Talks to devices over the same REST API as HA; no extra firmware endpoints needed.
 - Later: theme designer with live preview once firmware accepts JSON custom themes.
 
 ## Themes (v1)

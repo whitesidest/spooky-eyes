@@ -6,7 +6,8 @@ up as its own device.
 
 - `firmware/` — PlatformIO firmware for the board
 - `custom_components/spooky_eyes/` — Home Assistant integration (HACS)
-- `webapp/` — Django web controller (fleet dashboard, gaze pad, groups & scenes)
+- `webapp/` — Django web controller: phone-first remote with a visual theme gallery, a Puppeteer
+  gaze pad for live scaring, and scenes & groups (see [webapp/README.md](webapp/README.md))
 - `tools/preview/` — render themes to images without hardware
 
 See [PLAN.md](PLAN.md) for the architecture and device API.
