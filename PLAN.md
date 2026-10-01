@@ -88,8 +88,13 @@ until released), `release` (return to autonomous gaze), `startle`, `roll` (eye r
   - `number` — pupil dilation override (with "auto" via switch/attr)
   - `button` — blink, wink left, wink right, startle, eye roll
   - `sensor` (diagnostic) — Wi-Fi RSSI, FPS, uptime
+  - `media_player` — the talking skull (speaker boards): board sounds by id, and any HA audio
+    (TTS, media sources, URLs) converted with ffmpeg to 16 kHz mono WAV, uploaded as clip `tts`
+    and played; volume, stop, browse
+  - `switch` theme sounds + `select` startle sound (firmware whose state has `theme_sounds` /
+    `theme_sound`: the sound paired with the current theme, played on every startle)
 - Services (target devices/entities, fan-out to many boards): `spooky_eyes.look`,
-  `spooky_eyes.action`.
+  `spooky_eyes.action`, `spooky_eyes.play_sound`, `spooky_eyes.stop_sound`.
 - Many boards = many devices; HA groups/scenes/automations drive them together
   (e.g. motion sensor → every pair of eyes looks toward the front door and turns angry).
 
@@ -112,6 +117,12 @@ vanilla JS/CSS, no build step, no CDN.
   `free_bytes`) and delete, "React to noise" + sensitivity with a live mic-level meter (polled
   only while visible). Battery badge (percent/voltage, red under 20 %) on cards, the board head and
   diagnostics. Older firmware without these fields simply doesn't get the UI.
+- **Theme sound** (state has `theme_sounds`): the sound paired with the current theme (none /
+  built-ins / clips, default from `info.themes[].sound`) and the master "Theme sounds" switch.
+- **Voice of the skull**: push-to-talk (MediaRecorder; needs HTTPS or localhost, explained when it
+  isn't) with Natural / Demon / Ghost / Robot effects applied by ffmpeg on the server, uploaded as
+  clip `voice` and played; "Use a recording" and "Play from URL" as the always-available routes. On
+  the board screen and in Puppeteer (fans out to every targeted speaker board).
 - **Puppeteer**: full-screen gaze pad + big action buttons aimed at one board, a group or all, plus
   a sound strip (built-ins and the clips every targeted board shares).
 - **Scenes & groups**: created, edited and applied in the app (no admin needed); a scene can set

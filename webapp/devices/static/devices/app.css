@@ -513,6 +513,53 @@ dialog.sheet .dialog-actions .spacer { flex: 1; }
 .sound-board.editing .sound-tile:not(.clip):not(.add) { opacity: 0.45; pointer-events: none; }
 #clips-edit[aria-pressed="true"] { background: var(--slate); color: var(--bone); }
 
+/* Theme sound: which effect a theme plays when the eyes startle */
+.pairing { display: grid; gap: 8px; padding-top: 12px; border-top: 1px solid var(--line-soft); }
+.pairing .field { max-width: 420px; }
+.pairing .switch { color: var(--bone-dim); }
+.pairing.off select.input { color: var(--ash); }
+
+/* Voice of the skull: hold a button, talk, it comes out of the board */
+.voice { display: grid; gap: 12px; padding-top: 12px; border-top: 1px solid var(--line-soft); }
+.voice-head { display: grid; gap: 2px; }
+.voice-head p { max-width: 52ch; }
+.voice-effects { max-width: 440px; }
+.talk-row { display: flex; align-items: center; gap: 18px; }
+.talk {
+  position: relative; width: 104px; height: 104px; flex: 0 0 auto; border-radius: 50%; padding: 0; cursor: pointer;
+  background: radial-gradient(circle at 50% 38%, var(--slate-2) 0%, var(--ink-2) 75%); color: var(--bone-dim);
+  border: 2px solid var(--line); display: grid; place-items: center;
+  touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent;
+  transition: background 0.15s, color 0.15s, border-color 0.15s, transform 0.08s;
+}
+.talk svg { width: 44px; height: 44px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
+.talk:hover { border-color: var(--ember); color: var(--bone); }
+.talk:active { transform: scale(0.97); }
+.talk.rec { background: var(--ember); color: var(--ember-ink); border-color: var(--ember); box-shadow: var(--glow); animation: talk-pulse 1.3s ease-out infinite; }
+.talk.busy { opacity: 0.6; cursor: progress; }
+.talk:disabled { opacity: 0.4; cursor: not-allowed; }
+@keyframes talk-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(255, 160, 46, 0.55), var(--glow); }
+  100% { box-shadow: 0 0 0 26px rgba(255, 160, 46, 0), var(--glow); }
+}
+.talk-text { display: grid; gap: 2px; min-width: 0; }
+.talk-label { font-weight: 600; font-size: 1.05rem; }
+.talk-status { font-variant-numeric: tabular-nums; min-height: 1.3em; }
+.talk-row.rec .talk-status { color: var(--ember); }
+.voice-note { max-width: 56ch; padding: 10px 12px; border-radius: 10px; background: var(--ink-2); border: 1px solid var(--line-soft); }
+.voice-alt { display: grid; gap: 8px; }
+.voice-alt .file-btn { position: relative; justify-self: start; }
+.voice-alt .file-btn input:focus-visible + span { outline: 2px solid var(--ember); outline-offset: 2px; }
+.voice-url { grid-template-columns: 1fr auto; }
+.voice-url .input { min-height: 44px; }
+@media (min-width: 640px) {
+  .voice-alt { grid-template-columns: auto 1fr; align-items: start; }
+}
+.voice-lg .talk { width: 148px; height: 148px; }
+.voice-lg .talk svg { width: 60px; height: 60px; }
+.voice-lg .talk-row { justify-content: flex-start; }
+.voice-lg .talk-label { font-family: var(--display); font-weight: 500; font-size: 1.35rem; }
+
 .listen { display: grid; gap: 10px; padding-top: 4px; }
 .meter { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 12px; }
 .meter-label { color: var(--ash); font-size: 0.9rem; font-weight: 500; }

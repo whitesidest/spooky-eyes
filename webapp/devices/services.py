@@ -3,11 +3,12 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 
+from django.conf import settings
 from django.utils import timezone
 
 from . import audio, client
 from .models import Device, Group
-from .validation import BUILTIN_SOUNDS
+from .validation import BUILTIN_SOUNDS, VOICE_CLIP
 
 MAX_WORKERS = 16
 
@@ -74,6 +75,8 @@ def fan_out(devices: list[Device], call) -> dict[str, dict]:
                 fields += _absorb_state(dev, value)
             dev.save(update_fields=fields)
             results[dev.device_id] = {"ok": True, "state": dev.last_state}
+            if isinstance(value, dict) and "theme" not in value and value:  # a call's own summary (speak)
+                results[dev.device_id].update(value)
     return results
 
 
@@ -174,6 +177,60 @@ def upload_sound(device: Device, name: str, data: bytes, filename: str = "") -> 
 def delete_sound(device: Device, name: str) -> dict:
     client.delete_sound(device.host, device.port, name)
     return fetch_sounds(device)
+
+
+# --- Voice of the skull: speak through one or many boards ---
+
+def speak(devices: list[Device], data: bytes, filename: str = "", effect: str = "natural") -> dict[str, dict]:
+    """Convert once (with the voice effect), upload as the `voice` clip to every speaker board, play it.
+
+    Returns a fan-out result: {device_id: {ok, state|error}}. Boards without a speaker are skipped
+    when there are several targets; a lone silent board reports an error. Raises UploadError when
+    the audio itself is bad or too long for any board.
+    """
+    able = [d for d in devices if d.features["speaker"]]
+    if not able:
+        if len(devices) == 1:
+            return {devices[0].device_id: {"ok": False, "error": f"{devices[0].name} has no speaker"}}
+        return {}
+    try:
+        wav = audio.convert(data, filename, effect=effect)
+    except audio.AudioError as err:
+        raise UploadError(str(err)) from None
+    seconds = audio.wav_seconds(wav)
+    if seconds < 0.1:
+        raise UploadError("that recording is silent or too short")
+
+    def run(dev: Device):
+        # Network only in the worker; the listing is stored on the main thread below.
+        try:
+            listing = client.get_sounds(dev.host, dev.port)
+        except client.DeviceError:
+            listing = dev.sounds or {}
+        free = int(listing.get("free_bytes") or 0)
+        replacing = next((c.get("bytes", 0) for c in listing.get("clips", []) if c.get("name") == VOICE_CLIP), 0)
+        if free and len(wav) > free + replacing:
+            raise client.DeviceError(
+                f"{dev.name}: {seconds:.0f} s won't fit, only room for about {(free + replacing) / audio.BYTES_PER_SECOND:.0f} s")
+        listing = client.upload_sound(dev.host, dev.port, VOICE_CLIP, wav)
+        client.action(dev.host, dev.port, {"action": "sound", "name": VOICE_CLIP})
+        return {"playing": VOICE_CLIP, "seconds": round(seconds, 1), "effect": effect, "_sounds": listing}
+
+    results = fan_out(able, run)
+    for dev in able:
+        listing = results.get(dev.device_id, {}).pop("_sounds", None)
+        if isinstance(listing, dict):
+            _store_sounds(dev, listing)
+    return results
+
+
+def speak_url(devices: list[Device], url: str, effect: str = "natural") -> dict[str, dict]:
+    """Download `url` on the server, then speak() it."""
+    try:
+        data, name = audio.fetch_url(url, settings.MAX_UPLOAD_BYTES)
+    except audio.AudioError as err:
+        raise UploadError(str(err)) from None
+    return speak(devices, data, name, effect)
 
 
 def common_sounds(devices: list[Device]) -> dict:

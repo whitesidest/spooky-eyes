@@ -96,6 +96,183 @@ const SE = (() => {
     };
   }
 
+  // ---------- Voice of the skull: hold a button, talk into the phone, it plays on the board(s) ----------
+  // Builds the block into `host`. getTarget() -> {device}|{group}|{all}; the server converts the recording
+  // (with the chosen effect) and uploads it to every targeted speaker board, then plays it.
+  // Needs a secure context (HTTPS or localhost) for the microphone; otherwise it says so plainly and
+  // leaves the "use a recording" and "play from URL" routes, which always work.
+  const VOICE_MAX_MS = 30000;
+  const MIC_GLYPH = '<path d="M12 3a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3z"/><path d="M6 11a6 6 0 0 0 12 0"/><path d="M12 17v4M9 21h6"/>';
+  function voiceControl(host, { getTarget, targetText, big }) {
+    const effects = snapshot.voice_effects || [{ id: "natural", name: "Natural" }];
+    let effect = (() => {
+      try { return localStorage.getItem("se-voice-effect") || "natural"; } catch (_) { return "natural"; }
+    })();
+    if (!effects.some((e) => e.id === effect)) effect = "natural";
+    host.innerHTML = `
+      <div class="voice-head"><h3>Voice of the skull</h3><p class="muted small"></p></div>
+      <div class="seg voice-effects" role="group" aria-label="Voice effect"></div>
+      <div class="talk-row">
+        <button type="button" class="talk" aria-label="Hold to talk"><svg viewBox="0 0 24 24" aria-hidden="true">${MIC_GLYPH}</svg></button>
+        <div class="talk-text"><strong class="talk-label">Hold to talk</strong><span class="talk-status muted small"></span></div>
+      </div>
+      <p class="voice-note muted small" hidden></p>
+      <div class="voice-alt">
+        <label class="btn btn-ghost file-btn"><input type="file" accept="audio/*" capture class="sr-only"><span>Use a recording</span></label>
+        <form class="voice-url add-row"><input class="input" type="url" name="url" placeholder="https://… an mp3, wav or ogg" required spellcheck="false"><button class="btn" type="submit">Play</button></form>
+      </div>`;
+    const sub = $(".voice-head p", host);
+    const seg = $(".voice-effects", host);
+    const talk = $(".talk", host);
+    const row = $(".talk-row", host);
+    const label = $(".talk-label", host);
+    const status = $(".talk-status", host);
+    const note = $(".voice-note", host);
+    const file = $(".file-btn input", host);
+    const urlForm = $(".voice-url", host);
+    const setSub = () => (sub.textContent = `Hold the button, say something, let go — it comes out of ${targetText ? targetText() : "the board"}.`);
+    setSub();
+
+    for (const e of effects) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.dataset.effect = e.id;
+      b.textContent = e.name;
+      b.setAttribute("aria-pressed", String(e.id === effect));
+      b.addEventListener("click", () => {
+        effect = e.id;
+        $$("button", seg).forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+        try { localStorage.setItem("se-voice-effect", effect); } catch (_) {}
+      });
+      seg.appendChild(b);
+    }
+
+    const canRecord = window.isSecureContext && navigator.mediaDevices?.getUserMedia && window.MediaRecorder;
+    if (!canRecord) {
+      talk.disabled = true;
+      label.textContent = "Microphone unavailable here";
+      note.hidden = false;
+      note.textContent = window.isSecureContext
+        ? "This browser can't record audio. Pick a recording below, or play from a URL."
+        : `Browsers only open the microphone on a secure page. Open this app over HTTPS, or as http://localhost on this device — plain http://${location.hostname} won't do. Picking a recording or playing from a URL still works.`;
+    }
+
+    // ---- sending ----
+    let sending = false;
+    async function speak(blob, filename) {
+      if (sending) return;
+      sending = true;
+      talk.classList.add("busy");
+      label.textContent = "Sending…";
+      status.textContent = `${(blob.size / 1000).toFixed(0)} kB, ${effects.find((e) => e.id === effect)?.name || effect}`;
+      const body = new FormData();
+      body.append("file", blob, filename);
+      body.append("effect", effect);
+      body.append("target", JSON.stringify(getTarget()));
+      try {
+        const res = await fetch("/api/voice", { method: "POST", headers: { "X-CSRFToken": csrf() }, body });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+        report(data, "Spoke through");
+        const ok = Object.values(data.results || {}).find((r) => r.ok);
+        status.textContent = ok ? `Said ${ok.seconds} s as ${effects.find((e) => e.id === effect)?.name || effect}` : "";
+      } catch (err) {
+        fail(err);
+        status.textContent = "";
+      } finally {
+        sending = false;
+        talk.classList.remove("busy");
+        label.textContent = canRecord ? "Hold to talk" : "Microphone unavailable here";
+      }
+    }
+
+    // ---- recording ----
+    let stream = null, recorder = null, chunks = [], startedAt = 0, timer = null, limit = null;
+    const mime = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg;codecs=opus", ""].find(
+      (m) => !m || (window.MediaRecorder && MediaRecorder.isTypeSupported(m))
+    );
+    const ext = mime.includes("mp4") ? "m4a" : mime.includes("ogg") ? "ogg" : "webm";
+    const tick = () => {
+      const s = (Date.now() - startedAt) / 1000;
+      status.textContent = `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")} — let go to send`;
+    };
+    async function start() {
+      if (!canRecord || recorder || sending) return;
+      label.textContent = "Listening…";
+      try {
+        stream = stream || (await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } }));
+      } catch (err) {
+        label.textContent = "Hold to talk";
+        toast(err.name === "NotAllowedError" ? "Microphone access was refused. Allow it in the browser's site settings." : `Couldn't open the microphone (${err.message || err.name})`, "bad");
+        return;
+      }
+      chunks = [];
+      recorder = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+      recorder.ondataavailable = (e) => e.data.size && chunks.push(e.data);
+      recorder.onstop = () => {
+        const held = Date.now() - startedAt;
+        const blob = new Blob(chunks, { type: recorder.mimeType || mime || "audio/webm" });
+        recorder = null;
+        clearInterval(timer);
+        clearTimeout(limit);
+        row.classList.remove("rec");
+        talk.classList.remove("rec");
+        talk.setAttribute("aria-pressed", "false");
+        if (held < 350 || blob.size < 1000) {
+          label.textContent = "Hold to talk";
+          status.textContent = "Keep the button held while you talk.";
+          return;
+        }
+        speak(blob, `voice.${ext}`);
+      };
+      recorder.start();
+      startedAt = Date.now();
+      row.classList.add("rec");
+      talk.classList.add("rec");
+      talk.setAttribute("aria-pressed", "true");
+      tick();
+      timer = setInterval(tick, 250);
+      limit = setTimeout(stop, VOICE_MAX_MS);
+    }
+    function stop() {
+      if (recorder && recorder.state !== "inactive") recorder.stop();
+    }
+    talk.addEventListener("pointerdown", (e) => {
+      e.preventDefault();
+      talk.setPointerCapture(e.pointerId);
+      start();
+    });
+    talk.addEventListener("pointerup", stop);
+    talk.addEventListener("pointercancel", stop);
+    talk.addEventListener("lostpointercapture", stop);
+    talk.addEventListener("contextmenu", (e) => e.preventDefault());
+    talk.addEventListener("keydown", (e) => {
+      if ((e.key === " " || e.key === "Enter") && !e.repeat) (e.preventDefault(), start());
+    });
+    talk.addEventListener("keyup", (e) => (e.key === " " || e.key === "Enter") && stop());
+    window.addEventListener("blur", stop);
+
+    // ---- the always-available routes ----
+    file.addEventListener("change", () => {
+      const f = file.files[0];
+      if (f) speak(f, f.name || `voice.${ext}`);
+      file.value = "";
+    });
+    urlForm.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const btn = $("button", urlForm);
+      btn.setAttribute("aria-busy", "true");
+      api("/api/voice/url", { target: getTarget(), url: urlForm.url.value.trim(), effect })
+        .then((r) => {
+          report(r, "Playing on");
+          urlForm.url.value = "";
+        })
+        .catch(fail)
+        .finally(() => btn.removeAttribute("aria-busy"));
+    });
+    return { refresh: setSub };
+  }
+
   // ---------- Themes ----------
   const themes = new Map((snapshot.themes || []).map((t) => [t.id, t]));
   const themeName = (id) => themes.get(id)?.name || id || "—";
@@ -566,6 +743,7 @@ const SE = (() => {
         $("span:last-child", now).textContent = `Playing ${soundLabel(s.playing)}`;
       }
       tiles?.setPlaying(s.playing);
+      paintPairing(s);
       $("#listen-block").hidden = !f.microphone;
       if (f.microphone) {
         if (document.activeElement !== listen) listen.checked = !!s.listen;
@@ -579,6 +757,35 @@ const SE = (() => {
       const free = soundsListing.free_bytes;
       $("#sound-storage").textContent = free !== undefined ? `${(free / 1e6).toFixed(1)} MB free on the board, about ${Math.floor(free / 32000)} s of clips` : "";
     }
+    // Theme sound: the effect paired with the current theme (firmware that reports theme_sounds only).
+    const pairing = $("#pairing");
+    const pairSelect = $("#theme-sound");
+    const pairSwitch = $("#theme-sounds");
+    function paintPairing(s) {
+      pairing.hidden = s.theme_sounds === undefined;
+      if (pairing.hidden) return;
+      const names = (soundsListing.builtin || []).concat((soundsListing.clips || []).map((c) => c.name));
+      const current = s.theme_sound || "";
+      if (current && !names.includes(current)) names.push(current);
+      const want = JSON.stringify(names);
+      if (pairSelect.dataset.names !== want) {
+        pairSelect.dataset.names = want;
+        pairSelect.innerHTML = "";
+        pairSelect.appendChild(new Option("No sound", ""));
+        for (const n of names) pairSelect.appendChild(new Option(soundLabel(n) + ((soundsListing.builtin || []).includes(n) ? "" : " (clip)"), n));
+      }
+      if (document.activeElement !== pairSelect) pairSelect.value = current;
+      if (document.activeElement !== pairSwitch) pairSwitch.checked = !!s.theme_sounds;
+      pairing.classList.toggle("off", !s.theme_sounds);
+      const theme = themeName(s.theme);
+      $("#pairing-label").textContent = `Startle sound for ${theme}`;
+      const dflt = (device.themes || []).find((t) => t.id === s.theme)?.sound;
+      const change = dflt !== undefined && (dflt || "") !== current ? ` ${theme} comes with ${dflt ? soundLabel(dflt) : "no sound"}.` : "";
+      $("#pairing-note").textContent = `Plays whenever the eyes startle — a loud noise, the Startle button, a scene.${change}`;
+    }
+    pairSelect.addEventListener("change", () => optimistic({ theme_sound: pairSelect.value || null }));
+    pairSwitch.addEventListener("change", (e) => optimistic({ theme_sounds: e.target.checked }));
+
     function paintLevel(s) {
       const db = typeof s.sound_level === "number" ? s.sound_level : -90;
       const th = threshold(s.sensitivity);
@@ -722,6 +929,8 @@ const SE = (() => {
       api(`/api/devices/${id}/sounds`)
         .then((r) => ((soundsListing = r.sounds), (device.sounds = r.sounds), buildTiles(), paintSound(device.state || {})))
         .catch(() => {});
+      $("#voice").hidden = false;
+      voiceControl($("#voice"), { getTarget: () => target, targetText: () => device.name });
     }
 
     const apply = (state, undo) =>
@@ -877,10 +1086,18 @@ const SE = (() => {
 
     // Sound strip: the target's built-ins + clips; for a group, only what every speaker-board shares.
     const strip = $("#sound-strip");
+    let voice = null;
+    const voiceTargetText = () => {
+      const t = getTarget();
+      const n = devices.filter((d) => d.features?.speaker && (t.all || (t.group !== undefined ? groups.find((g) => g.id === t.group)?.devices || [] : [t.device]).includes(d.device_id))).length;
+      return t.device ? devices.find((d) => d.device_id === t.device)?.name || "the board" : n === 1 ? "the one board with a speaker" : `${n} boards`;
+    };
     function showSounds(target, ids) {
       const able = devices.filter((d) => ids.includes(d.device_id) && d.features?.speaker);
       $("#sound-strip-wrap").hidden = !able.length;
       if (!able.length) return;
+      if (!voice) voice = voiceControl($("#voice"), { getTarget: () => getTarget(), targetText: voiceTargetText, big: true });
+      else voice.refresh();
       let builtin = null, clips = null;
       for (const d of able) {
         const b = new Set(d.sounds?.builtin || []), c = new Set((d.sounds?.clips || []).map((x) => x.name));
