@@ -95,6 +95,7 @@ class Renderer {
   // Per-eye colour set (left eye = theme, right eye may use ThemeSpec::right).
   Rgb irisInner_, irisOuter_, pupilColor_, glowColor_;
   float glowAmount_ = 0, haze_ = 0;
+  float spiralCx_ = 0;  // sclera spiral centre x (mirrored for the right eye)
   // Sub-eye cluster (spider): screen-space centres and scales for this eye.
   int clusterN_ = 0;
   float clusterX_[kMaxClusterEyes], clusterY_[kMaxClusterEyes], clusterS_[kMaxClusterEyes];

@@ -128,7 +128,7 @@ Added (v1.1), grouped by `category` (reported in `/api/info` themes):
 
 | Category | Themes |
 |---|---|
-| halloween | `fire` (flaming pits, no pupil), `sauron` (lidless, slow searchlight sweeps), `zombie` (bloodshot; right eye is a milky, wall-eyed cataract), `demon` (goat bar pupil, flames), `werewolf` (amber eyeshine), `vampire` (crimson glow), `ghost` (luminous ring with ectoplasm wisps), `jack_o_lantern` (flame-filled carved triangle), `spider` (four glossy red orbs per panel), `dead` (cartoon X_X, sickly green) |
+| halloween | `fire` (flaming pits, no pupil), `sauron` (lidless, slow searchlight sweeps), `zombie` (bloodshot; right eye is a milky, wall-eyed cataract), `demon` (goat bar pupil, flames), `werewolf` (amber eyeshine), `vampire` (crimson glow), `ghost` (luminous ring with ectoplasm wisps), `jack_o_lantern` (flame-filled carved triangle), `spider` (four glossy red orbs per panel), `dead` (cartoon X_X, sickly green), `chucky` ("Killer Doll": glassy too-blue doll eyes, dead still then a snap blink), `saw` ("Puppet": white ceramic face, hollow black socket, small glowing red eye, painted red cheek spiral; never blinks), `blood_zombie` ("Bloodshot Zombie": throbbing blood-red irises, heavy veins, blue-grey dead lids) |
 | creatures | `cat` (slow trusting blinks), `dragon` (gold slit, scaly lids), `owl` (huge pupils, locks on), `snake` (lidless copper slit, never blinks), `chameleon` (scaly turrets, each eye wanders independently) |
 | sci-fi | `alien` (eyes drift out of sync), `terminator` (target-acquisition sweeps), `robot` (blue lens, aperture pupil) |
 | holidays | `frost` (winter ice, glints), `valentine` (heart pupil, heartbeat glow), `st_patricks` (shamrock pupil, gold rim), `easter` (pastel candy iris), `fireworks` (star core, red/white/blue sparks) |
@@ -139,7 +139,10 @@ Theme extras (all optional, zero = off): `sparkle`, `lidDroop`, `blinkSpeed`, `i
 (right eye picks its own targets while idle; both converge on `look`), `scanRate` (slow full-width
 sweeps per minute), `dozeRate` (lids sag shut then snap open), `cluster` (sub-eyes per panel from a
 built-in layout), `pupilDilate` (startle dilation), `fireStretch` (radial streaks), and `right`
-(an `EyeVariant`: iris/pupil/glow colours, pupil and glow scale, cataract `haze`, wall-eye `lazy`).
+(an `EyeVariant`: iris/pupil/glow colours, pupil and glow scale, cataract `haze`, wall-eye `lazy`),
+`socket` (a flat ring of `socketColor` between the iris and the sclera: hollow puppet socket) and
+`scleraSpiral` (a painted one-arm spiral disc on the sclera, centred `scleraSpiralX/Y` px from the
+iris, `scleraSpiralRadius` wide; static, so it is baked with the eyeball at no per-frame cost).
 Pupil shapes: round, slit, bar, heart, triangle, star, clover, cross (X), none.
 
 Ideas next: `pumpkin_king`, JSON custom themes from HA / the web controller.

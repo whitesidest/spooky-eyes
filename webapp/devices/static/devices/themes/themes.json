@@ -13,6 +13,12 @@
    "gif": "anime.gif"
   },
   {
+   "id": "blood_zombie",
+   "png": "blood_zombie.png",
+   "small": "blood_zombie_s.png",
+   "gif": "blood_zombie.gif"
+  },
+  {
    "id": "cat",
    "png": "cat.png",
    "small": "cat_s.png",
@@ -23,6 +29,12 @@
    "png": "chameleon.png",
    "small": "chameleon_s.png",
    "gif": "chameleon.gif"
+  },
+  {
+   "id": "chucky",
+   "png": "chucky.png",
+   "small": "chucky_s.png",
+   "gif": "chucky.gif"
   },
   {
    "id": "dead",
@@ -119,6 +131,12 @@
    "png": "sauron.png",
    "small": "sauron_s.png",
    "gif": "sauron.gif"
+  },
+  {
+   "id": "saw",
+   "png": "saw.png",
+   "small": "saw_s.png",
+   "gif": "saw.gif"
   },
   {
    "id": "snake",
