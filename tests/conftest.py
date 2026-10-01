@@ -58,11 +58,22 @@ def _no_websocket():
         yield
 
 
-def mock_board(aioclient_mock, base: str = BASE, info: dict | None = None, state: dict | None = None):
+SOUNDS = {
+    "builtin": ["growl", "heartbeat", "whisper", "creak", "zap", "chime", "test"],
+    "clips": [{"name": "boo", "bytes": 64044}],
+    "free_bytes": 3_000_000,
+}
+
+
+def mock_board(
+    aioclient_mock, base: str = BASE, info: dict | None = None, state: dict | None = None, sounds: dict | None = None
+):
     aioclient_mock.get(f"{base}/api/info", json=info or INFO)
     aioclient_mock.get(f"{base}/api/state", json=state or STATE)
     aioclient_mock.post(f"{base}/api/state", json=state or STATE)
     aioclient_mock.post(f"{base}/api/action", json={"ok": True})
+    aioclient_mock.get(f"{base}/api/sounds", json=sounds or SOUNDS)
+    aioclient_mock.post(f"{base}/api/sounds", json=sounds or SOUNDS)
 
 
 @pytest.fixture

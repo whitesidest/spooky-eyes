@@ -38,6 +38,12 @@
           "sleepy": "Sleepy",
           "asleep": "Asleep"
         }
+      },
+      "theme_sound": {
+        "name": "Startle sound",
+        "state": {
+          "none": "None"
+        }
       }
     },
     "switch": {
@@ -46,6 +52,9 @@
       },
       "listen": {
         "name": "React to noise"
+      },
+      "theme_sounds": {
+        "name": "Theme sounds"
       }
     },
     "number": {
@@ -109,6 +118,11 @@
             }
           }
         }
+      }
+    },
+    "media_player": {
+      "voice": {
+        "name": "Voice"
       }
     }
   },
