@@ -25,6 +25,7 @@ constexpr float kCentre = kSize / 2.0f;
 constexpr float kScreenR = kSize / 2.0f;
 constexpr float kPi = 3.14159265f;
 constexpr float kTwoPi = 6.2831853f;
+constexpr float kScleraSpiralK = kTwoPi / 16.0f;  // sclera spiral pitch: one turn every 16 px
 
 // Small, hot per-frame buffers: prefer fast internal RAM.
 void* fastAlloc(size_t bytes) {
@@ -265,6 +266,7 @@ void Renderer::setupFrame(const EyeState& s) {
   glowAmount_ = t.glowAmount;
   glowInvR2_ = t.glowRadius > 0 ? 1.0f / (t.glowRadius * t.glowRadius) : 0.0f;
   haze_ = 0;
+  spiralCx_ = s.mirror ? -t.scleraSpiralX : t.scleraSpiralX;  // "outward" flips on the right panel
   if (s.mirror && t.right.enabled) {
     const EyeVariant& v = t.right;
     irisInner_ = v.irisInner;
@@ -592,6 +594,31 @@ HOT Renderer::Col Renderer::shade(int px, int py, float fx, float fy) const {
     col.r *= k;
     col.g *= k;
     col.b *= k;
+  }
+  // Hollow socket: a flat dark ring the iris sits inside (the iris is drawn over its centre).
+  if (t.socket > 0) {
+    const float ro = t.irisRadius + t.socket;
+    float sa = 1.0f - smoothstep(ro - 1.5f, ro + 1.5f, r);
+    if (sa > 0) {
+      col.r = lerp(col.r, t.socketColor.r, sa);
+      col.g = lerp(col.g, t.socketColor.g, sa);
+      col.b = lerp(col.b, t.socketColor.b, sa);
+    }
+  }
+  // Painted sclera spiral (a "cheek" beside the socket): static, so it is baked with the eyeball.
+  if (t.scleraSpiral > 0) {
+    const float r0 = t.irisRadius + t.socket;
+    if (r > r0) {
+      const float sx = fx - cx_ - spiralCx_, sy = fy - cy_ - t.scleraSpiralY;
+      const float rs = fastSqrt(sx * sx + sy * sy);
+      float band = 0.5f + 0.5f * fastSin(fastAtan2(sy, sx) + rs * kScleraSpiralK);
+      float w = t.scleraSpiral * smoothstep(0.38f, 0.62f, band) * smoothstep(r0, r0 + 5.0f, r);
+      if (rs < 5.0f) w = t.scleraSpiral;  // solid dot at the spiral's heart
+      if (t.scleraSpiralRadius > 0) w *= 1.0f - smoothstep(t.scleraSpiralRadius - 3.0f, t.scleraSpiralRadius, rs);
+      col.r = lerp(col.r, t.scleraSpiralColor.r, w);
+      col.g = lerp(col.g, t.scleraSpiralColor.g, w);
+      col.b = lerp(col.b, t.scleraSpiralColor.b, w);
+    }
   }
 
   // --- Iris ---

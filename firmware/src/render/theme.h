@@ -100,6 +100,15 @@ struct ThemeSpec {
   float pupilDilate;  // extra pupil size multiplier while startled (0 = 1)
   float fireStretch;  // radial fire: radial noise frequency multiplier (0 = 1; <1 = long streaks)
   EyeVariant right;   // right-panel overrides
+
+  // --- v1.3 extras ---
+  float socket;             // px: flat ring of socketColor between the iris edge and the sclera (hollow puppet socket)
+  Rgb socketColor;
+  float scleraSpiral;       // 0..1 painted one-arm spiral on the sclera outside the socket (static, baked)
+  Rgb scleraSpiralColor;
+  float scleraSpiralX;      // spiral centre offset from the iris centre, px (+x = away from the nose)
+  float scleraSpiralY;      // px, +y = down
+  float scleraSpiralRadius; // px the painted disc reaches from its centre (0 = the whole sclera)
 };
 
 // Sub-eye layout used when cluster > 0: offset from the panel centre (px, left panel;

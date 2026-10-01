@@ -39,6 +39,9 @@ DEFAULT_THEMES = [
         ("easter", "Easter", "holidays"),
         ("fireworks", "Fireworks", "holidays"),
         ("dead", "Dead (X_X)", "halloween"),
+        ("chucky", "Killer Doll", "halloween"),
+        ("saw", "Puppet", "halloween"),
+        ("blood_zombie", "Bloodshot Zombie", "halloween"),
     )
 ]
 CATEGORY_ORDER = ["halloween", "creatures", "sci-fi", "holidays", "fun", "classic"]

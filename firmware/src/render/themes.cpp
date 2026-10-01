@@ -975,6 +975,124 @@ const ThemeSpec kThemes[] = {
         .lidDroop = 0.15f,
         .blinkSpeed = 0.4f,
     },
+
+    // ------------------------------------------------------------------ v1.3 additions
+    {
+        .id = "chucky",
+        .name = "Killer Doll",
+        // A toy-store doll's eyes: glassy, too-blue, too-perfect vinyl with painted lashes and
+        // a hard glint. Dead still and unblinking, then a sudden snap of the eyes.
+        .sclera = {0.99f, 0.99f, 0.97f},
+        .scleraEdge = {0.82f, 0.84f, 0.90f},
+        .veins = 0,
+        .rings = 0,
+        .irisRadius = 70,
+        .irisInner = {0.62f, 0.90f, 1.00f},
+        .irisOuter = {0.04f, 0.20f, 0.72f},
+        .limbus = {0.02f, 0.03f, 0.16f},
+        .limbusWidth = 8,
+        .striation = 0.3f,
+        .striationFreq = 48,
+        .pupilShape = PupilShape::Round,
+        .pupilColor = {0.00f, 0.00f, 0.02f},
+        .pupilMin = 17,
+        .pupilMax = 26,
+        .glowColor = {0.40f, 0.70f, 1.00f},
+        .glowRadius = 72,
+        .glowAmount = 0.12f,
+        .specular = 1.0f,
+        .lids = true,
+        .lidColor = {0.93f, 0.72f, 0.62f},  // vinyl skin
+        .lidEdge = {0.20f, 0.09f, 0.06f},   // painted lashes
+        .gazeRange = 34,
+        .saccadeRate = 0.3f,
+        .blinkRate = 1.5f,
+        .jitter = 0,
+        .snap = true,  // doll eyes click into place
+        .category = "halloween",
+        .sparkle = 0.3f,     // the sinister glint
+        .blinkSpeed = 2.0f,  // when it finally blinks, it's a snap
+        .pupilDilate = 0.5f, // plastic pupils barely react
+    },
+    {
+        .id = "saw",
+        .name = "Puppet",
+        // Ventriloquist-dummy face: a white ceramic eyeball with a painted red spiral slowly
+        // creeping round a hollow black socket; inside, a small glowing red eye with a
+        // pinpoint glint. No lids, never blinks, head-jerk snaps.
+        .sclera = {0.96f, 0.94f, 0.88f},
+        .scleraEdge = {0.88f, 0.84f, 0.76f},
+        .veins = 0,
+        .rings = 0,
+        .irisRadius = 40,
+        .irisInner = {1.00f, 0.16f, 0.08f},
+        .irisOuter = {0.74f, 0.02f, 0.00f},
+        .limbus = {0.22f, 0.00f, 0.00f},
+        .limbusWidth = 6,
+        .striation = 0.3f,
+        .striationFreq = 50,
+        .pupilShape = PupilShape::Round,
+        .pupilColor = {0.00f, 0.00f, 0.00f},
+        .pupilMin = 7,
+        .pupilMax = 14,
+        .glowColor = {1.00f, 0.08f, 0.02f},
+        .glowRadius = 46,
+        .glowAmount = 0.55f,
+        .glowPulse = 0.3f,
+        .specular = 0.9f,
+        .lids = false,
+        .gazeRange = 14,
+        .saccadeRate = 0.35f,
+        .blinkRate = 0,
+        .jitter = 0,
+        .snap = true,
+        .category = "halloween",
+        .socket = 14,
+        .socketColor = {0.02f, 0.01f, 0.01f},
+        .scleraSpiral = 1.0f,
+        .scleraSpiralColor = {0.82f, 0.05f, 0.04f},
+        .scleraSpiralX = -50,  // the painted cheek spiral sits low and outward of the socket
+        .scleraSpiralY = 48,
+        .scleraSpiralRadius = 44,
+    },
+    {
+        .id = "blood_zombie",
+        .name = "Bloodshot Zombie",
+        // Both eyes alive and hunting: blood-red glowing irises that throb, bloodshot sclera
+        // under heavy veins, blue-grey dead skin on the lids. Twitchy and menacing.
+        .sclera = {0.86f, 0.70f, 0.64f},
+        .scleraEdge = {0.40f, 0.06f, 0.05f},
+        .veins = 1.0f,
+        .rings = 0,
+        .irisRadius = 64,
+        .irisInner = {1.00f, 0.32f, 0.12f},
+        .irisOuter = {0.62f, 0.00f, 0.00f},
+        .limbus = {0.16f, 0.00f, 0.00f},
+        .limbusWidth = 8,
+        .striation = 0.7f,
+        .striationFreq = 70,
+        .pupilShape = PupilShape::Round,
+        .pupilColor = {0.02f, 0.00f, 0.00f},
+        .pupilMin = 10,
+        .pupilMax = 22,
+        .glowColor = {1.00f, 0.10f, 0.02f},
+        .glowRadius = 58,
+        .glowAmount = 0.6f,
+        .glowPulse = 0.8f,
+        .specular = 0.5f,
+        .lids = true,
+        .lidColor = {0.38f, 0.44f, 0.50f},  // blue-grey dead skin
+        .lidEdge = {0.10f, 0.05f, 0.08f},   // sunken dark sockets
+        .gazeRange = 36,
+        .saccadeRate = 0.5f,
+        .blinkRate = 2,
+        .jitter = 2.0f,
+        .snap = false,
+        .category = "halloween",
+        .lidDroop = 0.10f,
+        .blinkSpeed = 0.7f,
+        .pupilDilate = 1.3f,
+    },
 };
 
 constexpr int kThemeCount = sizeof(kThemes) / sizeof(kThemes[0]);
