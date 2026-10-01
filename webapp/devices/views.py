@@ -1,68 +1,17 @@
 import json
 
+from django.db import IntegrityError
 from django.http import HttpResponse, JsonResponse
-from django.shortcuts import get_object_or_404, render
+from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_http_methods, require_POST
 
-from . import client, services
+from . import client, services, themes
 from .models import Device, Group, Scene
-from .validation import ValidationError, clean_action, clean_state
+from .validation import NAME_MAX, ValidationError, clean_action, clean_group, clean_name, clean_scene, clean_state
 
-# Fallback when no board has reported its theme list yet (mirrors firmware/src/render/themes.cpp).
-DEFAULT_THEMES = [
-    {"id": i, "name": n, "category": c}
-    for i, n, c in (
-        ("human", "Human", "classic"),
-        ("cat", "Cat", "creatures"),
-        ("fire", "Fire", "halloween"),
-        ("alien", "Alien", "sci-fi"),
-        ("sauron", "Sauron", "halloween"),
-        ("terminator", "Terminator", "sci-fi"),
-        ("dragon", "Dragon", "creatures"),
-        ("zombie", "Zombie", "halloween"),
-        ("demon", "Demon", "halloween"),
-        ("werewolf", "Werewolf", "halloween"),
-        ("vampire", "Vampire", "halloween"),
-        ("ghost", "Ghost", "halloween"),
-        ("jack_o_lantern", "Jack-o'-Lantern", "halloween"),
-        ("hypnotic", "Hypnotic", "fun"),
-        ("owl", "Owl", "creatures"),
-        ("frost", "Frost", "holidays"),
-        ("valentine", "Valentine", "holidays"),
-        ("rainbow", "Rainbow", "fun"),
-        ("robot", "Robot", "sci-fi"),
-        ("snake", "Snake", "creatures"),
-        ("spider", "Spider", "halloween"),
-        ("chameleon", "Chameleon", "creatures"),
-        ("puppy", "Sleepy Puppy", "fun"),
-        ("anime", "Anime", "fun"),
-        ("st_patricks", "St. Patrick's", "holidays"),
-        ("easter", "Easter", "holidays"),
-        ("fireworks", "Fireworks", "holidays"),
-        ("dead", "Dead (X_X)", "halloween"),
-    )
-]
-CATEGORY_ORDER = ["halloween", "creatures", "sci-fi", "holidays", "fun", "classic"]
-
-
-def theme_groups(themes):
-    """Group themes by category (for <optgroup>s), in a stable, Halloween-first order."""
-    groups = {}
-    for t in themes:
-        groups.setdefault(t.get("category") or "other", []).append(t)
-    order = CATEGORY_ORDER + sorted(set(groups) - set(CATEGORY_ORDER))
-    return [(c, groups[c]) for c in order if c in groups]
-
-
-def fleet_themes(devices):
-    """Union of every board's themes (first-seen order), falling back to the built-in list."""
-    seen, out = set(), []
-    for d in devices:
-        for t in d.themes:
-            if t.get("id") not in seen:
-                seen.add(t.get("id"))
-                out.append(t)
-    return out or DEFAULT_THEMES
+# Kept for callers that imported these from here.
+DEFAULT_THEMES = themes.DEFAULT_THEMES
+CATEGORY_ORDER = themes.CATEGORY_ORDER
 
 
 def _body(request):
@@ -83,50 +32,97 @@ def _device_json(d: Device):
     return {
         "device_id": d.device_id,
         "name": d.name,
+        "name_is_local": d.name_is_local,
         "host": d.host,
         "port": d.port,
         "model": d.model,
         "fw": d.fw,
         "online": d.online,
+        "last_seen": d.last_seen.isoformat() if d.last_seen else None,
         "state": d.last_state,
         "themes": d.themes or DEFAULT_THEMES,
         "moods": d.moods,
         "preview": bool(d.preview_path),
+        "groups": [g.pk for g in d.groups.all()],
+    }
+
+
+def _group_json(g: Group):
+    return {"id": g.pk, "name": g.name, "devices": [d.device_id for d in g.devices.all()]}
+
+
+def _scene_json(s: Scene):
+    return {
+        "id": s.pk,
+        "name": s.name,
+        "group": s.group_id,
+        "group_name": s.group.name if s.group else None,
+        "state": s.state,
+        "action": s.action,
+    }
+
+
+def _snapshot(**extra):
+    """Everything the pages need for a first paint without a round trip."""
+    devices = list(Device.objects.prefetch_related("groups"))
+    groups = list(Group.objects.prefetch_related("devices"))
+    return {
+        "devices": [_device_json(d) for d in devices],
+        "groups": [_group_json(g) for g in groups],
+        "scenes": [_scene_json(s) for s in Scene.objects.select_related("group")],
+        "themes": themes.catalog(devices),
+        "moods": ["neutral", "angry", "surprised", "sleepy", "asleep"],
+        "name_max": NAME_MAX,
+        **extra,
     }
 
 
 # --- Pages ---
 
 def dashboard(request):
+    snapshot = _snapshot()
     return render(request, "devices/dashboard.html", {
-        "devices": Device.objects.all(),
-        "groups": Group.objects.all(),
-        "scenes": Scene.objects.all(),
-        "theme_groups": theme_groups(fleet_themes(Device.objects.all())),
+        "snapshot": snapshot,
+        "boards": snapshot["devices"],
+        "online": sum(1 for d in snapshot["devices"] if d["online"]),
     })
+
+
+def board(request, device_id):
+    device = get_object_or_404(Device, device_id=device_id)
+    snapshot = _snapshot(device=device.device_id)
+    catalog = themes.catalog([device])
+    return render(request, "devices/board.html", {
+        "snapshot": snapshot,
+        "device": device,
+        "theme_groups": themes.grouped(catalog),
+        "moods": device.moods,
+        "page_title": device.name,
+    })
+
+
+def puppeteer(request):
+    return render(request, "devices/puppeteer.html", {"snapshot": _snapshot(), "page_title": "Puppeteer"})
 
 
 def gaze(request):
-    devices = Device.objects.all()
-    groups = Group.objects.prefetch_related("devices")
-    return render(request, "devices/gaze.html", {
-        "devices": devices,
-        "groups": groups,
-        # For the live view: which boards each target covers, and which boards can show a picture.
-        "gaze_config": {
-            "previews": [d.device_id for d in devices if d.preview_path],
-            "names": {d.device_id: d.name for d in devices},
-            "groups": {str(g.pk): [d.device_id for d in g.devices.all()] for g in groups},
-        },
+    return redirect("puppeteer", permanent=True)
+
+
+def scenes(request):
+    return render(request, "devices/scenes.html", {
+        "snapshot": _snapshot(),
+        "theme_groups": themes.grouped(themes.catalog(Device.objects.all())),
+        "page_title": "Scenes & groups",
     })
 
 
-# --- JSON API ---
+# --- JSON API: boards ---
 
 @require_http_methods(["GET", "POST"])
 def api_devices(request):
     if request.method == "GET":
-        devices = list(Device.objects.all())
+        devices = list(Device.objects.prefetch_related("groups"))
         if request.GET.get("refresh"):
             services.refresh(devices)
         return JsonResponse({"devices": [_device_json(d) for d in devices]})
@@ -138,11 +134,37 @@ def api_devices(request):
         return _error(str(err))
     if not host:
         return _error("host is required")
+    if ":" in host and not data.get("port"):  # "10.0.0.5:8081"
+        host, _, maybe_port = host.rpartition(":")
+        if maybe_port.isdigit():
+            port = int(maybe_port)
+        else:
+            host = f"{host}:{maybe_port}"
     try:
         device = services.register(host, port)
     except client.DeviceError as err:
         return _error(f"could not reach board: {err}", 502)
     return JsonResponse({"device": _device_json(device)}, status=201)
+
+
+@require_http_methods(["GET", "PATCH", "DELETE"])
+def api_device(request, device_id):
+    device = get_object_or_404(Device, device_id=device_id)
+    if request.method == "DELETE":
+        device.delete()
+        return JsonResponse({"ok": True})
+    if request.method == "GET":
+        if request.GET.get("refresh"):
+            services.refresh([device])
+            device.refresh_from_db()
+        return JsonResponse({"device": _device_json(device)})
+    try:
+        data = _body(request)
+        name = clean_name(data.get("name"), "name", NAME_MAX)
+    except ValidationError as err:
+        return _error(str(err))
+    result = services.rename(device, name)
+    return JsonResponse({"device": _device_json(device), **result})
 
 
 def api_device_preview(request, device_id):
@@ -156,12 +178,6 @@ def api_device_preview(request, device_id):
     response = HttpResponse(body, content_type=content_type)
     response["Cache-Control"] = "no-store"
     return response
-
-
-@require_http_methods(["DELETE"])
-def api_device_delete(request, device_id):
-    get_object_or_404(Device, device_id=device_id).delete()
-    return JsonResponse({"ok": True})
 
 
 @require_POST
@@ -187,12 +203,6 @@ def api_action(request):
 
 
 @require_POST
-def api_scene_apply(request, pk):
-    scene = get_object_or_404(Scene, pk=pk)
-    return JsonResponse({"scene": scene.name, "results": services.apply_scene(scene)})
-
-
-@require_POST
 def api_scan(request):
     from .discovery import scan
 
@@ -202,3 +212,93 @@ def api_scan(request):
         return _error(str(err))
     devices, errors = scan(min(max(seconds, 1), 15))
     return JsonResponse({"devices": [_device_json(d) for d in devices], "errors": errors})
+
+
+def api_themes(request):
+    return JsonResponse({"themes": themes.catalog(Device.objects.all())})
+
+
+# --- JSON API: scenes ---
+
+def _scene_fields(data):
+    fields = clean_scene(data)
+    if fields["group"] is not None:
+        try:
+            fields["group"] = Group.objects.get(pk=fields["group"])
+        except Group.DoesNotExist:
+            raise ValidationError("unknown group") from None
+    return fields
+
+
+@require_http_methods(["GET", "POST"])
+def api_scenes(request):
+    if request.method == "GET":
+        return JsonResponse({"scenes": [_scene_json(s) for s in Scene.objects.select_related("group")]})
+    try:
+        fields = _scene_fields(_body(request))
+        scene = Scene.objects.create(**fields)
+    except ValidationError as err:
+        return _error(str(err))
+    except IntegrityError:
+        return _error("a scene with that name already exists")
+    return JsonResponse({"scene": _scene_json(scene)}, status=201)
+
+
+@require_http_methods(["GET", "PUT", "DELETE"])
+def api_scene(request, pk):
+    scene = get_object_or_404(Scene.objects.select_related("group"), pk=pk)
+    if request.method == "DELETE":
+        scene.delete()
+        return JsonResponse({"ok": True})
+    if request.method == "PUT":
+        try:
+            for key, value in _scene_fields(_body(request)).items():
+                setattr(scene, key, value)
+            scene.save()
+        except ValidationError as err:
+            return _error(str(err))
+        except IntegrityError:
+            return _error("a scene with that name already exists")
+    return JsonResponse({"scene": _scene_json(scene)})
+
+
+@require_POST
+def api_scene_apply(request, pk):
+    scene = get_object_or_404(Scene, pk=pk)
+    return JsonResponse({"scene": scene.name, "results": services.apply_scene(scene)})
+
+
+# --- JSON API: groups ---
+
+@require_http_methods(["GET", "POST"])
+def api_groups(request):
+    if request.method == "GET":
+        return JsonResponse({"groups": [_group_json(g) for g in Group.objects.prefetch_related("devices")]})
+    try:
+        fields = clean_group(_body(request))
+        group = Group.objects.create(name=fields["name"])
+    except ValidationError as err:
+        return _error(str(err))
+    except IntegrityError:
+        return _error("a group with that name already exists")
+    group.devices.set(Device.objects.filter(device_id__in=fields["devices"]))
+    return JsonResponse({"group": _group_json(group)}, status=201)
+
+
+@require_http_methods(["GET", "PUT", "DELETE"])
+def api_group(request, pk):
+    group = get_object_or_404(Group, pk=pk)
+    if request.method == "DELETE":
+        group.delete()
+        return JsonResponse({"ok": True})
+    if request.method == "PUT":
+        try:
+            fields = clean_group(_body(request))
+            group.name = fields["name"]
+            group.save()
+        except ValidationError as err:
+            return _error(str(err))
+        except IntegrityError:
+            return _error("a group with that name already exists")
+        group.devices.set(Device.objects.filter(device_id__in=fields["devices"]))
+    return JsonResponse({"group": _group_json(group)})

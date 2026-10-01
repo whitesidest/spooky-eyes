@@ -1,0 +1,183 @@
+{
+ "themes": [
+  {
+   "id": "alien",
+   "png": "alien.png",
+   "small": "alien_s.png",
+   "gif": "alien.gif"
+  },
+  {
+   "id": "anime",
+   "png": "anime.png",
+   "small": "anime_s.png",
+   "gif": "anime.gif"
+  },
+  {
+   "id": "cat",
+   "png": "cat.png",
+   "small": "cat_s.png",
+   "gif": "cat.gif"
+  },
+  {
+   "id": "chameleon",
+   "png": "chameleon.png",
+   "small": "chameleon_s.png",
+   "gif": "chameleon.gif"
+  },
+  {
+   "id": "dead",
+   "png": "dead.png",
+   "small": "dead_s.png",
+   "gif": "dead.gif"
+  },
+  {
+   "id": "demon",
+   "png": "demon.png",
+   "small": "demon_s.png",
+   "gif": "demon.gif"
+  },
+  {
+   "id": "dragon",
+   "png": "dragon.png",
+   "small": "dragon_s.png",
+   "gif": "dragon.gif"
+  },
+  {
+   "id": "easter",
+   "png": "easter.png",
+   "small": "easter_s.png",
+   "gif": "easter.gif"
+  },
+  {
+   "id": "fire",
+   "png": "fire.png",
+   "small": "fire_s.png",
+   "gif": "fire.gif"
+  },
+  {
+   "id": "fireworks",
+   "png": "fireworks.png",
+   "small": "fireworks_s.png",
+   "gif": "fireworks.gif"
+  },
+  {
+   "id": "frost",
+   "png": "frost.png",
+   "small": "frost_s.png",
+   "gif": "frost.gif"
+  },
+  {
+   "id": "ghost",
+   "png": "ghost.png",
+   "small": "ghost_s.png",
+   "gif": "ghost.gif"
+  },
+  {
+   "id": "human",
+   "png": "human.png",
+   "small": "human_s.png",
+   "gif": "human.gif"
+  },
+  {
+   "id": "hypnotic",
+   "png": "hypnotic.png",
+   "small": "hypnotic_s.png",
+   "gif": "hypnotic.gif"
+  },
+  {
+   "id": "jack_o_lantern",
+   "png": "jack_o_lantern.png",
+   "small": "jack_o_lantern_s.png",
+   "gif": "jack_o_lantern.gif"
+  },
+  {
+   "id": "owl",
+   "png": "owl.png",
+   "small": "owl_s.png",
+   "gif": "owl.gif"
+  },
+  {
+   "id": "puppy",
+   "png": "puppy.png",
+   "small": "puppy_s.png",
+   "gif": "puppy.gif"
+  },
+  {
+   "id": "rainbow",
+   "png": "rainbow.png",
+   "small": "rainbow_s.png",
+   "gif": "rainbow.gif"
+  },
+  {
+   "id": "robot",
+   "png": "robot.png",
+   "small": "robot_s.png",
+   "gif": "robot.gif"
+  },
+  {
+   "id": "sauron",
+   "png": "sauron.png",
+   "small": "sauron_s.png",
+   "gif": "sauron.gif"
+  },
+  {
+   "id": "snake",
+   "png": "snake.png",
+   "small": "snake_s.png",
+   "gif": "snake.gif"
+  },
+  {
+   "id": "spider",
+   "png": "spider.png",
+   "small": "spider_s.png",
+   "gif": "spider.gif"
+  },
+  {
+   "id": "st_patricks",
+   "png": "st_patricks.png",
+   "small": "st_patricks_s.png",
+   "gif": "st_patricks.gif"
+  },
+  {
+   "id": "terminator",
+   "png": "terminator.png",
+   "small": "terminator_s.png",
+   "gif": "terminator.gif"
+  },
+  {
+   "id": "valentine",
+   "png": "valentine.png",
+   "small": "valentine_s.png",
+   "gif": "valentine.gif"
+  },
+  {
+   "id": "vampire",
+   "png": "vampire.png",
+   "small": "vampire_s.png",
+   "gif": "vampire.gif"
+  },
+  {
+   "id": "werewolf",
+   "png": "werewolf.png",
+   "small": "werewolf_s.png",
+   "gif": "werewolf.gif"
+  },
+  {
+   "id": "zombie",
+   "png": "zombie.png",
+   "small": "zombie_s.png",
+   "gif": "zombie.gif"
+  }
+ ],
+ "sizes": {
+  "png": [
+   500,
+   240
+  ],
+  "small": [
+   250,
+   120
+  ]
+ },
+ "gif": true
+}

@@ -8,8 +8,11 @@ GET /sim/frame.png (advertised as "preview" in /api/info) for the web controller
 
 If the library can't be built it falls back to a plain in-memory fake without a preview.
 
-usage: python fake_device.py [--port 8081] [--id aabbccddeeff] [--name "Porch Eyes"] [--theme sauron]
+usage: python fake_device.py [--port 8081] [--id aabbccddeeff] [--name "Porch Eyes"] [--theme sauron] [--legacy]
 (no /ws; the web controller doesn't need it)
+
+Renaming: POST /api/state {"name": "Porch skull"} (1-32 chars) stores the name, which /api/info and the
+state then report. --legacy emulates older firmware that answers 400 "unknown field" instead.
 """
 import argparse
 import ctypes
@@ -77,8 +80,10 @@ def encode_png(width, height, rgb):
 class Board:
     """Device state plus (optionally) the simulated eyes; thread-safe."""
 
-    def __init__(self, lib, device_id, theme):
+    def __init__(self, lib, device_id, theme, name, legacy=False):
         self.lib = lib
+        self.name = name
+        self.legacy = legacy
         self.lock = threading.Lock()
         self.started = time.time()
         if lib:
@@ -112,9 +117,17 @@ class Board:
             s = dict(self.state)
             if self.lib:
                 s["gaze"] = {"x": round(self.lib.sim_target_x(self.sim), 2), "y": round(self.lib.sim_target_y(self.sim), 2)}
+        if not self.legacy:
+            s["name"] = self.name
         return {**s, "rssi": -55, "fps": self.fps if self.state["on"] else 0, "uptime": int(time.time() - self.started)}
 
     def apply_state(self, body):
+        if "name" in body:
+            if self.legacy:
+                return "unknown field name"
+            if not isinstance(body["name"], str) or not 1 <= len(body["name"].strip()) <= 32:
+                return "name must be 1-32 characters"
+            self.name = body["name"].strip()
         if "theme" in body and body["theme"] not in {t["id"] for t in self.themes}:
             return "unknown theme"
         if "mood" in body and body["mood"] not in self.moods:
@@ -198,7 +211,7 @@ def make_handler(info, board):
         def do_GET(self):
             path = self.path.split("?")[0]
             if path == "/api/info":
-                return self._send(200, info)
+                return self._send(200, {**info, "name": board.name})
             if path == "/api/state":
                 return self._send(200, board.full_state())
             if path == "/sim/frame.png" and board.lib:
@@ -233,11 +246,12 @@ def main():
     ap.add_argument("--id", default="a1b2c3d4e5f6")
     ap.add_argument("--name", default=None)
     ap.add_argument("--theme", default="sauron")
+    ap.add_argument("--legacy", action="store_true", help="emulate firmware without the rename contract")
     args = ap.parse_args()
-    board = Board(load_sim(), args.id, args.theme)
+    board = Board(load_sim(), args.id, args.theme, args.name or f"Fake Eyes {args.id[-6:]}", args.legacy)
     mac = ":".join(args.id[i:i + 2] for i in range(0, 12, 2)).upper()
     info = {
-        "id": args.id, "name": args.name or f"Fake Eyes {args.id[-6:]}", "model": "simulator" if board.lib else "fake",
+        "id": args.id, "name": board.name, "model": "simulator" if board.lib else "fake",
         "fw": "0.0.0-sim" if board.lib else "0.0.0-fake", "mac": mac, "ip": "127.0.0.1",
         "themes": board.themes, "moods": board.moods, "eyes": 2,
     }

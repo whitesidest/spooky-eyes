@@ -1,0 +1,37 @@
+{% extends "devices/base.html" %}
+{% block content %}
+<div class="puppet">
+  <div class="head">
+    <div>
+      <h1>Puppeteer</h1>
+      <p class="sub">Steer <span id="target-count">all boards</span> live. Drag the pad; let go and they drift back to idling.</p>
+    </div>
+  </div>
+  <div class="targets">
+    <div id="targets" class="chips" role="group" aria-label="Which boards"></div>
+  </div>
+  <div id="live" class="live-grid" hidden></div>
+  <div class="pad-wrap">
+    <div id="pad" class="pad pad-lg" role="application" tabindex="0" aria-label="Gaze pad. Drag to steer the eyes; arrow keys nudge, Home recentres."><div class="ring"></div><div class="puck"></div></div>
+    <p id="readout" class="readout">x 0.00  y 0.00</p>
+  </div>
+  <div class="actions">
+    <div class="scare">
+      <button type="button" class="btn btn-big btn-primary" data-action="startle">Startle</button>
+      <button type="button" class="btn btn-big" data-action="blink">Blink</button>
+      <button type="button" class="btn btn-big" data-action="roll">Eye roll</button>
+    </div>
+    <button type="button" class="btn" data-action="wink_left">Wink left</button>
+    <button type="button" class="btn" data-action="wink_right">Wink right</button>
+    <button type="button" class="btn btn-ghost" data-action="release">Release</button>
+    <label class="switch hold" style="grid-column: 1 / -1"><input type="checkbox" id="hold"><span class="track"></span><span>Hold where I let go</span></label>
+  </div>
+  <div class="section">
+    <div class="section-head"><h2>Mood</h2></div>
+    <div class="seg" role="group" aria-label="Mood">
+      {% for m in snapshot.moods %}<button type="button" data-mood="{{ m }}">{{ m|capfirst }}</button>{% endfor %}
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}<script>SE.puppeteer();</script>{% endblock %}
