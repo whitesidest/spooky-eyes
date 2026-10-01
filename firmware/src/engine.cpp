@@ -7,6 +7,8 @@
 #include <esp_cpu.h>
 #include <esp_timer.h>
 
+#include "audio.h"
+#include "battery.h"
 #include "board.h"
 #include "display.h"
 #include "render/controller.h"
@@ -26,7 +28,13 @@ struct Settings {
   eyes::Mood mood = eyes::Mood::Neutral;
   bool autonomous = true;
   float pupil = -1;  // <0 = automatic
+  uint8_t volume = 70;
+  bool listen = false;       // react to loud noises (startle + glance toward the sound)
+  uint8_t sensitivity = 50;  // 0 = only very loud .. 100 = whispers
 };
+
+// Mic threshold for reactions: sensitivity 0 -> -18 dBFS, 100 -> -58 dBFS.
+float listenThresholdDb(uint8_t sensitivity) { return -18.0f - sensitivity * 0.4f; }
 
 SemaphoreHandle_t lock;
 Settings cfg;
@@ -201,6 +209,9 @@ void loadSettings() {
   eyes::Mood m;
   cfg.mood = eyes::moodFromName(prefs.getString("mood", "neutral").c_str(), &m) ? m : eyes::Mood::Neutral;
   cfg.autonomous = prefs.getBool("auto", true);
+  cfg.volume = prefs.getUChar("vol", 70);
+  cfg.listen = prefs.getBool("listen", false);
+  cfg.sensitivity = prefs.getUChar("sens", 50);
   name = prefs.getString("name", "");
 }
 
@@ -210,6 +221,9 @@ void saveSettings() {
   prefs.putString("theme", cfg.theme->id);
   prefs.putString("mood", eyes::moodName(cfg.mood));
   prefs.putBool("auto", cfg.autonomous);
+  prefs.putUChar("vol", cfg.volume);
+  prefs.putBool("listen", cfg.listen);
+  prefs.putUChar("sens", cfg.sensitivity);
   prefs.putString("name", name);
 }
 
@@ -228,6 +242,16 @@ void begin() {
   workGo = xSemaphoreCreateBinary();
   workDone = xSemaphoreCreateBinary();
   loadSettings();
+  battery::begin();
+  // Crash guard: if the last boot died inside audio setup, skip audio so OTA stays reachable.
+  if (prefs.getBool("aud_try", false)) {
+    Serial.println("audio: previous init did not finish; skipping audio this boot");
+    prefs.putBool("aud_try", false);
+  } else {
+    prefs.putBool("aud_try", true);
+    if (audio::begin()) audio::setVolume(cfg.volume);
+    prefs.putBool("aud_try", false);
+  }
   ctl.setTheme(cfg.theme);
   ctl.setMood(cfg.mood);
   ctl.setAutonomous(cfg.autonomous);
@@ -250,6 +274,22 @@ void begin() {
 }
 
 void loop() {
+  battery::update();
+  float dir;
+  bool listen;
+  float threshold;
+  {
+    Guard g;
+    listen = cfg.listen;
+    threshold = listenThresholdDb(cfg.sensitivity);
+  }
+  if (listen && audio::takeLoudEvent(threshold, &dir)) {
+    // Something went bump: jump, then stare toward it for a moment.
+    Guard g;
+    ctl.startle();
+    ctl.look(dir * 0.9f, 0.05f, 2.5f);
+    changed();
+  }
   static uint32_t lastLog = 0;
   if (millis() - lastLog > 5000) {
     lastLog = millis();
@@ -301,6 +341,18 @@ bool applyState(JsonVariantConst in, String* error) {
   if (!in["mood"].isNull()) {
     if (!eyes::moodFromName(in["mood"] | "", &next.mood)) return *error = "unknown mood", false;
   }
+  if (!in["volume"].isNull()) {
+    if (!readUnit(in["volume"], 0, 100, &f)) return *error = "volume must be 0-100", false;
+    next.volume = (uint8_t)f;
+  }
+  if (!in["listen"].isNull()) {
+    if (!in["listen"].is<bool>()) return *error = "listen must be boolean", false;
+    next.listen = in["listen"].as<bool>();
+  }
+  if (!in["sensitivity"].isNull()) {
+    if (!readUnit(in["sensitivity"], 0, 100, &f)) return *error = "sensitivity must be 0-100", false;
+    next.sensitivity = (uint8_t)f;
+  }
   String newName;
   bool hasName = !in["name"].isNull();
   if (hasName) {
@@ -330,6 +382,7 @@ bool applyState(JsonVariantConst in, String* error) {
   ctl.setMood(cfg.mood);
   if (ctl.autonomous() != cfg.autonomous) ctl.setAutonomous(cfg.autonomous);
   ctl.setPupilOverride(cfg.pupil);
+  if (audio::volume() != cfg.volume) audio::setVolume(cfg.volume);
   changed();
   return true;
 }
@@ -347,6 +400,12 @@ bool applyAction(JsonVariantConst in, String* error) {
     ctl.startle();
   } else if (!strcmp(action, "roll")) {
     ctl.roll();
+  } else if (!strcmp(action, "sound")) {
+    return audio::play(in["name"] | "", error);
+  } else if (!strcmp(action, "tone")) {
+    return audio::tone(in["hz"] | 440.0f, in["ms"] | 500, error);
+  } else if (!strcmp(action, "stop_sound")) {
+    audio::stop();
   } else if (!strcmp(action, "release")) {
     ctl.release();
     changed();
@@ -375,6 +434,20 @@ void writeState(JsonObject out) {
   JsonObject gaze = out["gaze"].to<JsonObject>();
   gaze["x"] = roundf(ctl.targetX() * 100) / 100;
   gaze["y"] = roundf(ctl.targetY() * 100) / 100;
+  out["volume"] = cfg.volume;
+  out["listen"] = cfg.listen;
+  out["sensitivity"] = cfg.sensitivity;
+  out["sound_level"] = roundf(audio::level());
+  String now = audio::playing();
+  if (now.length()) out["playing"] = now;
+  else out["playing"] = nullptr;
+  if (battery::present()) {
+    JsonObject b = out["battery"].to<JsonObject>();
+    b["voltage"] = roundf(battery::volts() * 100) / 100;
+    b["percent"] = battery::percent();
+  } else {
+    out["battery"] = nullptr;
+  }
   out["rssi"] = WiFi.isConnected() ? WiFi.RSSI() : 0;
   out["fps"] = roundf(fps * 10) / 10;
   out["uptime"] = millis() / 1000;
@@ -391,6 +464,10 @@ void writeInfo(JsonObject out) {
   out["mac"] = id.length() == 12 ? String(mac) : WiFi.macAddress();
   out["ip"] = WiFi.localIP().toString();
   out["eyes"] = 2;
+  JsonObject features = out["features"].to<JsonObject>();
+  features["speaker"] = audio::available();
+  features["microphone"] = audio::hasMicrophones();
+  features["battery"] = true;
   JsonArray themes = out["themes"].to<JsonArray>();
   for (int i = 0; i < eyes::themeCount(); ++i) {
     JsonObject t = themes.add<JsonObject>();

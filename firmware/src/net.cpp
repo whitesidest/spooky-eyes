@@ -10,6 +10,9 @@
 #include <WiFi.h>
 #include <esp_mac.h>
 
+#include <LittleFS.h>
+
+#include "audio.h"
 #include "board.h"
 #include "engine.h"
 #include "provision.h"
@@ -84,6 +87,43 @@ void setupRoutes() {
     engine::writeInfo(doc.to<JsonObject>());
     sendJson(req, 200, doc);
   });
+  // Sound library: built-in effects + uploaded 16-bit PCM WAV clips.
+  server.on("/api/sounds", HTTP_GET, [](AsyncWebServerRequest* req) {
+    JsonDocument doc;
+    audio::listSounds(doc.to<JsonObject>());
+    sendJson(req, 200, doc);
+  });
+  server.on("/api/sounds", HTTP_DELETE, [](AsyncWebServerRequest* req) {
+    String name = req->hasParam("name") ? req->getParam("name")->value() : "";
+    if (!audio::removeClip(name.c_str())) return sendError(req, "unknown sound");
+    req->send(200, "application/json", "{\"ok\":true}");
+  });
+  server.on(
+      "/api/sounds", HTTP_POST,
+      [](AsyncWebServerRequest* req) {
+        String name = req->hasParam("name") ? req->getParam("name")->value() : "";
+        if (!audio::validName(name.c_str())) return sendError(req, "name must be 1-24 of a-z 0-9 _ -");
+        if (!LittleFS.exists(audio::clipPath(name.c_str()))) return sendError(req, "upload failed (too big?)");
+        JsonDocument doc;
+        audio::listSounds(doc.to<JsonObject>());
+        sendJson(req, 200, doc);
+      },
+      [](AsyncWebServerRequest* req, const String&, size_t index, uint8_t* data, size_t len, bool final) {
+        String name = req->hasParam("name") ? req->getParam("name")->value() : "";
+        if (!audio::validName(name.c_str())) return;
+        String path = audio::clipPath(name.c_str());
+        if (index == 0) {
+          if (len > audio::freeBytes()) return;
+          req->_tempFile = LittleFS.open(path, "w");
+        }
+        if (!req->_tempFile) return;
+        if (req->_tempFile.write(data, len) != len) {
+          req->_tempFile.close();
+          LittleFS.remove(path);
+          return;
+        }
+        if (final) req->_tempFile.close();
+      });
   server.on("/api/debug", HTTP_GET, [](AsyncWebServerRequest* req) {
     JsonDocument doc;
     engine::writeDebug(doc.to<JsonObject>());
@@ -110,7 +150,8 @@ void setupRoutes() {
       "/update", HTTP_POST,
       [](AsyncWebServerRequest* req) {
         bool ok = !Update.hasError();
-        req->send(ok ? 200 : 500, "application/json", ok ? "{\"ok\":true}" : "{\"ok\":false}");
+        req->send(ok ? 200 : 500, "application/json",
+                  ok ? String("{\"ok\":true}") : String("{\"ok\":false,\"error\":\"") + Update.errorString() + "\"}");
         if (ok) {
           delay(200);
           ESP.restart();
