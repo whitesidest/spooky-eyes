@@ -7,6 +7,8 @@ NAME_MAX = 32  # firmware limit for the board name
 SOUND_NAME_RE = re.compile(r"^[a-z0-9_-]{1,24}$")  # firmware rule for sound names
 SOUND_NAME_MAX = 24
 BUILTIN_SOUNDS = ["growl", "heartbeat", "whisper", "creak", "zap", "chime", "test"]
+VOICE_EFFECTS = ["natural", "demon", "ghost", "robot"]  # see audio.EFFECTS
+VOICE_CLIP = "voice"  # the clip name push-to-talk and "play from URL" (over)write on the board
 
 
 class ValidationError(ValueError):
@@ -24,9 +26,13 @@ def clean_state(state) -> dict:
         raise ValidationError("state must be a non-empty object")
     out = {}
     for key, value in state.items():
-        if key in ("on", "autonomous", "listen"):
+        if key in ("on", "autonomous", "listen", "theme_sounds"):
             if not isinstance(value, bool):
                 raise ValidationError(f"{key} must be boolean")
+        elif key == "theme_sound":
+            # The sound paired with the current theme; null clears the pairing.
+            if value is not None:
+                value = clean_sound_name(value)
         elif key == "brightness":
             value = int(_num(value, 0, 255, key))
         elif key in ("volume", "sensitivity"):
@@ -50,6 +56,27 @@ def clean_sound_name(value) -> str:
     """A sound (built-in or clip) name: 1-24 of a-z 0-9 _ -."""
     if not isinstance(value, str) or not SOUND_NAME_RE.match(value):
         raise ValidationError("sound name must be 1-24 characters of a-z, 0-9, _ or -")
+    return value
+
+
+def clean_effect(value) -> str:
+    """A voice effect name; empty means natural."""
+    if value in (None, ""):
+        return "natural"
+    if value not in VOICE_EFFECTS:
+        raise ValidationError(f"effect must be one of {VOICE_EFFECTS}")
+    return value
+
+
+def clean_url(value) -> str:
+    """An http(s) URL for "play from URL"."""
+    if not isinstance(value, str) or not value.strip():
+        raise ValidationError("url is required")
+    value = value.strip()
+    if not re.match(r"^https?://[^\s/]+", value, re.IGNORECASE):
+        raise ValidationError("url must start with http:// or https://")
+    if len(value) > 2000:
+        raise ValidationError("url is too long")
     return value
 
 

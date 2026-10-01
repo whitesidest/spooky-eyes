@@ -70,6 +70,9 @@ client show up instantly; a 60 s poll backs it up if the socket drops.
 | Diagnostic sensors | Wi-Fi signal, Frame rate, Uptime (disabled by default) |
 | `number.<board>_volume` | Speaker volume, 0–100 % *(boards with a speaker)* |
 | `button.<board>_stop_sound` | Stop whatever is playing *(speaker)* |
+| `media_player.<board>_voice` | The talking skull: play a built-in effect or clip, or any audio HA can produce — TTS, a media-source file, a URL — which is converted and sent to the board *(speaker; see below)* |
+| `switch.<board>_theme_sounds` | Every theme plays its paired sound when the eyes startle *(firmware 0.3+ with a speaker)* |
+| `select.<board>_startle_sound` | The sound paired with the current theme: none, a built-in or an uploaded clip *(firmware 0.3+ with a speaker)* |
 | `switch.<board>_react_to_noise` | Eyes jump and glance toward loud noises *(microphones)* |
 | `number.<board>_noise_sensitivity` | How quiet a noise still counts, 0–100 % *(microphones)* |
 | `event.<board>_noise` | Fires on every loud noise (attribute `direction`: -1 left … +1 right) *(microphones)* |
@@ -89,6 +92,41 @@ Both target devices or entities, so one call can drive every board at once.
 - `spooky_eyes.stop_sound`
 
 Every loud noise also fires a `spooky_eyes_noise` event on the HA bus (`board_id`, `name`, `direction`).
+
+### The talking skull
+
+`media_player.<board>_voice` makes the board a speaker for the rest of Home Assistant. Built-in
+effects and uploaded clips play straight from the board (pick them in the media browser, or use
+`media_content_id: spooky_eyes://sound/growl` / a bare name with `media_content_type: sound`).
+Anything else — `tts.speak`, a file from a media source, an `http(s)` URL — is downloaded, converted
+to 16 kHz mono WAV with ffmpeg (Home Assistant's `ffmpeg` integration if it is set up, else an
+`ffmpeg` on the PATH; the official images have one), uploaded to the board as the clip `tts`
+(overwritten each time, up to 60 s) and played. Announcements work the same way; volume set/step and
+stop are supported. State is `playing` while the board plays anything, `idle` otherwise, `off` when
+the eyes are off.
+
+```yaml
+# Doorbell: the skull greets whoever is there.
+automation:
+  - alias: Skull greets visitors
+    triggers:
+      - trigger: state
+        entity_id: binary_sensor.doorbell
+        to: "on"
+    actions:
+      - action: tts.speak
+        target:
+          entity_id: tts.google_translate_en_com
+        data:
+          media_player_entity_id: media_player.porch_eyes_voice
+          message: "Welcome. We've been expecting you."
+```
+
+Firmware that pairs a sound with each theme also gets `switch.<board>_theme_sounds` (master enable)
+and `select.<board>_startle_sound`: the sound played whenever the eyes startle — a loud noise, the
+Startle button, an automation — for the theme currently showing. Pick "None" to clear the pairing.
+The select's options follow the board's sound list (refreshed every minute); `default_sound` in its
+attributes is what the theme ships with.
 
 ```yaml
 # Front-door motion: every pair of eyes snaps to the door and gets angry.

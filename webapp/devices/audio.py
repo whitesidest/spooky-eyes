@@ -19,6 +19,25 @@ TARGET_RATE = 16000
 BYTES_PER_SECOND = TARGET_RATE * 2  # mono 16-bit
 MAX_SECONDS = 120  # longer than the board can store anyway (~100 s)
 FFMPEG_TIMEOUT = 60
+URL_TIMEOUT = 20
+
+# Voice effects for push-to-talk, as ffmpeg -af chains. Every chain starts by settling on 16 kHz
+# (so the pitch tricks below do their maths on a known rate) and ends with loudnorm, which lifts a
+# quiet phone recording to a level the little speaker can use (dynaudnorm needs longer clips).
+#  - pitch shift = asetrate (changes pitch and speed) + aresample back + atempo to undo the speed
+#  - demon: ~0.75x pitch, short slap-back echoes for a cavern; ghost: ~1.2x pitch, long airy
+#    echoes and a slow tremolo; robot: phase-zeroed FFT frames (a monotone buzz) through a band-pass
+_PRE = "aresample=16000,"
+_POST = ",loudnorm=I=-16:TP=-1.5:LRA=11,aresample=16000"
+EFFECTS = {
+    "natural": _PRE + "highpass=f=80" + _POST,
+    "demon": _PRE + "asetrate=12000,aresample=16000,atempo=1.3333,aecho=0.8:0.9:40|90:0.4|0.25,highpass=f=60" + _POST,
+    "ghost": (_PRE + "asetrate=19200,aresample=16000,atempo=0.8333,aecho=0.7:0.8:120|260:0.5|0.3,"
+              "tremolo=f=5.5:d=0.35,highpass=f=150" + _POST),
+    "robot": (_PRE + "afftfilt=real='hypot(re,im)*sin(0)':imag='hypot(re,im)*cos(0)':win_size=512:overlap=0.75,"
+              "highpass=f=200,lowpass=f=4000" + _POST),
+}
+EFFECT_LABELS = {"natural": "Natural", "demon": "Demon", "ghost": "Ghost", "robot": "Robot"}
 
 
 class AudioError(ValueError):
@@ -34,18 +53,26 @@ def accepted_formats() -> str:
     return "any common audio file" if ffmpeg_path() else "WAV files (install ffmpeg for mp3 and the rest)"
 
 
-def convert(data: bytes, filename: str = "", use_ffmpeg: bool | None = None) -> bytes:
-    """Return a 16 kHz mono 16-bit PCM WAV for `data` (any format with ffmpeg; PCM WAV otherwise)."""
+def convert(data: bytes, filename: str = "", use_ffmpeg: bool | None = None, effect: str | None = None) -> bytes:
+    """Return a 16 kHz mono 16-bit PCM WAV for `data` (any format with ffmpeg; PCM WAV otherwise).
+
+    `effect` (a key of EFFECTS) runs the audio through that voice filter; it needs ffmpeg, except that
+    "natural" without ffmpeg falls back to the plain WAV conversion.
+    """
     if not data:
         raise AudioError("the file is empty")
+    if effect is not None and effect not in EFFECTS:
+        raise AudioError(f"unknown voice effect {effect!r}")
     if use_ffmpeg is None:
         use_ffmpeg = ffmpeg_path() is not None
     if use_ffmpeg:
-        return _convert_ffmpeg(data, filename)
+        return _convert_ffmpeg(data, filename, effect)
+    if effect not in (None, "natural"):
+        raise AudioError("voice effects need ffmpeg on the server")
     return convert_wav(data)
 
 
-def _convert_ffmpeg(data: bytes, filename: str) -> bytes:
+def _convert_ffmpeg(data: bytes, filename: str, effect: str | None = None) -> bytes:
     # Some containers (m4a/mp4) need a seekable input, so go through a temp file rather than a pipe.
     suffix = "." + filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
     if not suffix.strip(".").isalnum():
@@ -54,8 +81,10 @@ def _convert_ffmpeg(data: bytes, filename: str) -> bytes:
         src.write(data)
         src.flush()
         cmd = [ffmpeg_path(), "-v", "error", "-nostdin", "-i", src.name, "-vn", "-map_metadata", "-1",
-               "-t", str(MAX_SECONDS), "-ac", "1", "-ar", str(TARGET_RATE), "-acodec", "pcm_s16le",
-               "-fflags", "+bitexact", "-f", "wav", "pipe:1"]
+               "-t", str(MAX_SECONDS)]
+        if effect:
+            cmd += ["-af", EFFECTS[effect]]
+        cmd += ["-ac", "1", "-ar", str(TARGET_RATE), "-acodec", "pcm_s16le", "-fflags", "+bitexact", "-f", "wav", "pipe:1"]
         try:
             proc = subprocess.run(cmd, capture_output=True, timeout=FFMPEG_TIMEOUT, check=False)
         except subprocess.TimeoutExpired:
@@ -156,6 +185,34 @@ def wav_seconds(wav: bytes) -> float:
             return w.getnframes() / w.getframerate()
     except (wave.Error, EOFError, ZeroDivisionError):
         return 0.0
+
+
+def fetch_url(url: str, max_bytes: int) -> tuple[bytes, str]:
+    """Download an audio file for "play from URL". Returns (data, a filename hint for the converter)."""
+    import httpx  # noqa: PLC0415 - keeps this module importable without Django/httpx for the WAV helpers
+
+    try:
+        with httpx.stream("GET", url, timeout=URL_TIMEOUT, follow_redirects=True) as resp:
+            if resp.status_code >= 400:
+                raise AudioError(f"that address answered HTTP {resp.status_code}")
+            chunks, total = [], 0
+            for chunk in resp.iter_bytes():
+                total += len(chunk)
+                if total > max_bytes:
+                    raise AudioError(f"that file is too large to convert (limit {human_size(max_bytes)})")
+                chunks.append(chunk)
+            ctype = resp.headers.get("content-type", "").split(";")[0].strip().lower()
+    except httpx.HTTPError as err:
+        raise AudioError(f"couldn't fetch that address ({err.__class__.__name__})") from None
+    data = b"".join(chunks)
+    if not data:
+        raise AudioError("that address returned nothing")
+    name = url.split("?", 1)[0].rsplit("/", 1)[-1]
+    if "." not in name:
+        ext = {"audio/mpeg": "mp3", "audio/mp4": "m4a", "audio/ogg": "ogg", "audio/wav": "wav", "audio/x-wav": "wav",
+               "audio/flac": "flac", "audio/aac": "aac", "audio/webm": "webm", "video/webm": "webm"}.get(ctype)
+        name = f"download.{ext}" if ext else "download"
+    return data, name
 
 
 def human_size(n: int | float) -> str:

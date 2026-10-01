@@ -58,6 +58,31 @@ class SpookyEyesClient:
     async def action(self, action: str, **params: Any) -> dict[str, Any]:
         return await self._request("POST", "/api/action", json={"action": action, **params})
 
+    # ─── Sounds (firmware with features.speaker) ────────────────────────────
+
+    async def get_sounds(self) -> dict[str, Any]:
+        """{"builtin": [...], "clips": [{"name", "bytes"}], "free_bytes": N}"""
+        return await self._request("GET", "/api/sounds")
+
+    async def upload_sound(self, name: str, wav: bytes) -> dict[str, Any]:
+        """Multipart upload of a 16-bit PCM WAV clip; the board answers with its sound listing."""
+        form = aiohttp.FormData()
+        form.add_field("file", wav, filename=f"{name}.wav", content_type="audio/wav")
+        url = f"{self.base_url}/api/sounds"
+        try:
+            async with self._session.post(
+                url, params={"name": name}, data=form, timeout=aiohttp.ClientTimeout(total=120)
+            ) as resp:
+                if resp.status >= 400:
+                    text = await resp.text()
+                    raise SpookyEyesApiError(f"{resp.status} on /api/sounds: {text[:200]}")
+                return await resp.json(content_type=None)
+        except (aiohttp.ClientError, asyncio.TimeoutError) as err:
+            raise SpookyEyesApiError(f"{type(err).__name__} on /api/sounds: {err}") from err
+
+    async def delete_sound(self, name: str) -> dict[str, Any]:
+        return await self._request("DELETE", "/api/sounds", params={"name": name})
+
     # ─── WebSocket push ────────────────────────────────────────────────────
 
     def start_listener(

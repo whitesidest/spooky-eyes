@@ -9,8 +9,9 @@ from django.conf import settings
 
 from . import audio, client, services, themes
 from .models import Device, Group, Scene
-from .validation import (BUILTIN_SOUNDS, NAME_MAX, SOUND_NAME_MAX, ValidationError, clean_action, clean_group,
-                         clean_name, clean_scene, clean_sound_name, clean_state, suggest_sound_name)
+from .validation import (BUILTIN_SOUNDS, NAME_MAX, SOUND_NAME_MAX, VOICE_CLIP, VOICE_EFFECTS, ValidationError,
+                         clean_action, clean_effect, clean_group, clean_name, clean_scene, clean_sound_name, clean_state,
+                         clean_url, suggest_sound_name)
 
 SOUND_ACTIONS = {"sound", "tone", "stop_sound"}
 
@@ -100,6 +101,8 @@ def _snapshot(**extra):
         "sound_name_max": SOUND_NAME_MAX,
         "upload_accepts": audio.accepted_formats(),
         "upload_any_format": audio.ffmpeg_path() is not None,
+        "voice_effects": [{"id": e, "name": audio.EFFECT_LABELS[e]} for e in VOICE_EFFECTS],
+        "voice_clip": VOICE_CLIP,
         **extra,
     }
 
@@ -269,6 +272,63 @@ def api_device_sound(request, device_id, name):
     except client.DeviceError as err:
         return _error(str(err), 502)
     return JsonResponse({"sounds": listing})
+
+
+# --- JSON API: voice of the skull ---
+
+def _voice_targets(raw_target):
+    """Target T as JSON text (multipart) or an object; sound only goes to boards with a speaker."""
+    if isinstance(raw_target, str):
+        try:
+            raw_target = json.loads(raw_target or "{}")
+        except ValueError:
+            raise ValidationError("target must be JSON") from None
+    devices = services.resolve_targets(raw_target)
+    if not devices:
+        raise ValidationError("no boards to talk through")
+    return devices
+
+
+@require_POST
+def api_voice(request):
+    """Push-to-talk: multipart `file` (a recording), `effect`, `target` (JSON) -> converted, uploaded as the
+    `voice` clip to every targeted speaker board and played at once."""
+    upload = next(iter(request.FILES.values()), None)
+    if upload is None:
+        return _error("no recording was sent")
+    if upload.size > settings.MAX_UPLOAD_BYTES:
+        return _error(f"that recording is too large to convert (limit {audio.human_size(settings.MAX_UPLOAD_BYTES)})")
+    try:
+        effect = clean_effect(request.POST.get("effect"))
+        devices = _voice_targets(request.POST.get("target"))
+    except (ValidationError, services.TargetError) as err:
+        return _error(str(err))
+    if effect != "natural" and audio.ffmpeg_path() is None:
+        return _error("voice effects need ffmpeg on the server; pick Natural or install ffmpeg")
+    try:
+        results = services.speak(devices, upload.read(), upload.name or "", effect)
+    except services.UploadError as err:
+        return _error(str(err))
+    return JsonResponse({"results": results, "effect": effect})
+
+
+@require_POST
+def api_voice_url(request):
+    """Play from URL: {"target": T, "url": "...", "effect": "demon"} -> downloaded here, converted, spoken."""
+    try:
+        data = _body(request)
+        url = clean_url(data.get("url"))
+        effect = clean_effect(data.get("effect"))
+        devices = _voice_targets(data.get("target"))
+    except (ValidationError, services.TargetError) as err:
+        return _error(str(err))
+    if effect != "natural" and audio.ffmpeg_path() is None:
+        return _error("voice effects need ffmpeg on the server; pick Natural or install ffmpeg")
+    try:
+        results = services.speak_url(devices, url, effect)
+    except services.UploadError as err:
+        return _error(str(err))
+    return JsonResponse({"results": results, "effect": effect})
 
 
 @require_POST

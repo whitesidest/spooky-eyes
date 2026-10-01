@@ -31,6 +31,19 @@ gets the old screens.
   `a-z 0-9 _ -`, suggested from the file name) and an upload that would not fit the board's free
   space is refused with a message saying how much would. "Edit clips" reveals delete marks. The
   board has roughly 3.4 MB for clips (about 100 s).
+- **Theme sound** (firmware whose state carries `theme_sounds`) — each theme has a paired sound that
+  plays whenever the eyes startle (a noise, the Startle button, a scene). The board screen shows the
+  pairing for the theme currently showing (no sound / built-ins / clips; the note says what the
+  theme ships with, from `info.themes[].sound`) and a master "Theme sounds" switch. Scenes may set
+  `theme_sound` and `theme_sounds` too.
+- **Voice of the skull** — hold the big button, talk into the phone, let go: the recording goes to
+  the server, is converted with ffmpeg to 16 kHz mono WAV through the chosen voice effect
+  (Natural, Demon, Ghost, Robot), uploaded to every targeted speaker board as the clip `voice` and
+  played at once. Browsers only open the microphone on a secure page (HTTPS or `localhost`), so on
+  plain `http://<lan-ip>` the button explains that and the two other routes remain: "Use a
+  recording" (a file picker that opens the phone's recorder) and "Play from URL" (the server
+  downloads, converts and plays). It lives on the board screen and in Puppeteer, where it fans out
+  to the selected board, group or all boards. Voice effects need `ffmpeg`.
 - **React to noise** — the firmware startles and glances toward loud sounds; sensitivity 0–100 maps
   to a threshold from −18 dBFS (only very loud) to −58 dBFS (whispers). The meter shows the live
   mic level with a tick at that threshold; it polls the board about three times a second but only
@@ -96,7 +109,9 @@ Themes a board reports that have no picture still appear in the gallery with a p
 | GET | `/api/devices/<device_id>/sounds` | `{"sounds": {"builtin": [...], "clips": [{"name", "bytes"}], "free_bytes": N}}` (also remembered per board) |
 | POST | `/api/devices/<device_id>/sounds` | multipart `file` (+ optional `name`) → converted and uploaded → `{"sounds", "name"}` |
 | DELETE | `/api/devices/<device_id>/sounds/<name>` | — |
-| POST | `/api/state` | `{"target": T, "state": {...partial}}` — also `volume` 0–100, `listen` bool, `sensitivity` 0–100 |
+| POST | `/api/state` | `{"target": T, "state": {...partial}}` — also `volume` 0–100, `listen` bool, `sensitivity` 0–100, `theme_sounds` bool, `theme_sound` name or null |
+| POST | `/api/voice` | multipart `file` (a recording), `effect` (`natural`, `demon`, `ghost`, `robot`), `target` (T as JSON) → converted, uploaded as the clip `voice` to every targeted speaker board and played; `{"results": {...}, "effect"}` (each ok result adds `seconds` and `effect`) |
+| POST | `/api/voice/url` | `{"target": T, "url": "https://…", "effect": "ghost"}` — the server downloads the file, then as above |
 | POST | `/api/action` | `{"target": T, "action": "look", "x": 0.5, "y": 0, "duration": 1.5}`, `{"action": "sound", "name": "growl"}`, `{"action": "tone", "hz": 440, "ms": 500}`, `{"action": "stop_sound"}` (sound actions aimed at a group skip boards without a speaker) |
 | GET | `/api/themes` | theme catalogue with picture URLs |
 | GET, POST | `/api/scenes` | `{"name", "group": pk|null, "state": {...}, "action": {...}|null}` |
@@ -117,7 +132,9 @@ POST/PUT/PATCH/DELETE need Django's CSRF token (the pages include it).
 startle, roll and follow the pad exactly as the hardware will. It supports the rename contract and
 the sound/battery API (features, volume/listen/sensitivity, a wandering fake room level with the
 odd bang that startles the eyes while listening, in-memory clips with the board's 3.4 MB budget,
-a slowly draining battery); `--legacy` emulates older firmware with none of it, `--no-speaker`,
+a slowly draining battery) and theme sounds (`info.themes[].sound` defaults, `theme_sounds` and a
+per-theme `theme_sound` in the state, played on every startle); `--legacy` emulates older firmware
+with none of it, `--no-speaker`,
 `--no-mic` and `--no-battery` drop single features, `--battery 15` starts low.
 
 ```bash

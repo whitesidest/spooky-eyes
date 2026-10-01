@@ -74,6 +74,15 @@
   </label>
   <p id="now-playing" class="now-playing muted small" hidden></p>
   <div id="sound-board" class="sound-board" role="group" aria-label="Sounds"></div>
+  <div id="pairing" class="pairing" hidden>
+    <label class="field">
+      <span id="pairing-label">Startle sound</span>
+      <select class="input" id="theme-sound"></select>
+    </label>
+    <p id="pairing-note" class="muted small"></p>
+    <label class="switch"><input type="checkbox" id="theme-sounds"><span class="track"></span><span>Theme sounds (every theme plays its sound when the eyes startle)</span></label>
+  </div>
+  <div id="voice" class="voice" hidden></div>
   <div id="listen-block" class="listen" hidden>
     <label class="switch"><input type="checkbox" id="listen"><span class="track"></span><span>React to noise (eyes jump at loud sounds)</span></label>
     <label class="range range-sens">

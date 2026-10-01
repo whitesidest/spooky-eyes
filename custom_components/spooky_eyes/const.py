@@ -14,6 +14,7 @@ PLATFORMS = [
     Platform.BUTTON,
     Platform.EVENT,
     Platform.LIGHT,
+    Platform.MEDIA_PLAYER,
     Platform.NUMBER,
     Platform.SELECT,
     Platform.SENSOR,
@@ -41,6 +42,16 @@ ACTIONS = [
     ACTION_STARTLE,
     ACTION_ROLL,
 ]
+
+# Sounds: the built-in effects every speaker board has, the clip the media player uploads
+# spoken/streamed audio to, and the browse-tree ids it hands Home Assistant.
+BUILTIN_SOUNDS = ["growl", "heartbeat", "whisper", "creak", "zap", "chime", "test"]
+SOUND_NAME_RE = r"^[a-z0-9_-]{1,24}$"
+TTS_CLIP = "tts"
+MEDIA_SOUND_PREFIX = "spooky_eyes://sound/"
+MEDIA_FOLDER_PREFIX = "spooky_eyes://sounds/"
+# "none" stands for "no sound paired" in the startle-sound select (the board uses null).
+THEME_SOUND_NONE = "none"
 
 SERVICE_LOOK = "look"
 SERVICE_ACTION = "action"

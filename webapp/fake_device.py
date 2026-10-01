@@ -21,6 +21,10 @@ carries volume, listen, sensitivity, sound_level (a slowly wandering fake room l
 "bang"), playing and battery {voltage, percent} (slowly draining). /api/sounds lists/uploads/deletes
 clips, kept in memory with a 3.4 MB budget; "sound", "tone" and "stop_sound" actions mark something
 as playing for its duration.
+
+Theme sounds: /api/info themes carry a default paired "sound" (or null); the state has theme_sounds
+(master enable) and theme_sound (the sound paired with the current theme, settable per theme and
+played whenever the eyes startle - the startle action or a noise reaction). --legacy has none of it.
 """
 import argparse
 import ctypes
@@ -52,6 +56,13 @@ SOUND_ACTIONS = {"sound", "tone", "stop_sound"}
 BUILTIN = {"growl": 2.2, "heartbeat": 2.6, "whisper": 2.6, "creak": 2.0, "zap": 0.9, "chime": 2.2, "test": 1.0}
 SOUND_NAME = re.compile(r"^[a-z0-9_-]{1,24}$")
 SOUND_BUDGET = 3_400_000  # bytes of LittleFS the real board has for clips
+# Default sound paired with a theme (what the firmware ships); themes not listed pair with nothing.
+THEME_SOUND_DEFAULTS = {
+    "sauron": "growl", "fire": "growl", "demon": "growl", "werewolf": "growl", "dragon": "growl",
+    "zombie": "heartbeat", "blood_zombie": "heartbeat", "vampire": "heartbeat", "valentine": "heartbeat",
+    "ghost": "whisper", "dead": "whisper", "chucky": "creak", "saw": "creak", "jack_o_lantern": "creak",
+    "terminator": "zap", "robot": "zap", "alien": "zap", "fireworks": "zap", "frost": "chime", "hypnotic": "chime",
+}
 
 
 def wav_info(data):
@@ -154,6 +165,10 @@ class Board:
             self.moods = [lib.sim_mood_name(n).decode() for n in range(lib.sim_mood_count())]
         else:
             self.themes, self.moods = FALLBACK_THEMES, FALLBACK_MOODS
+        if not legacy and speaker:
+            self.themes = [{**t, "sound": THEME_SOUND_DEFAULTS.get(t["id"])} for t in self.themes]
+        self.theme_sounds = True
+        self.theme_sound = {t["id"]: t.get("sound") for t in self.themes}  # per-theme pairing, persisted
         ids = {t["id"] for t in self.themes}
         theme = theme if theme in ids else self.themes[0]["id"]
         self.state = {"on": True, "brightness": 200, "theme": theme, "mood": "neutral", "autonomous": True,
@@ -182,6 +197,9 @@ class Board:
         if not self.legacy:
             s["name"] = self.name
             s.update(self.audio_state())
+            if self.features["speaker"]:
+                s["theme_sounds"] = self.theme_sounds
+                s["theme_sound"] = self.theme_sound.get(self.state["theme"])
         return {**s, "rssi": -55, "fps": self.fps if self.state["on"] else 0, "uptime": int(time.time() - self.started)}
 
     # --- sound + battery -------------------------------------------------------------------------
@@ -224,6 +242,15 @@ class Board:
         if self.lib:
             with self.lock:
                 self.lib.sim_startle(self.sim)
+        self.startled()
+
+    def startled(self):
+        """Every startle plays the sound paired with the current theme (when theme sounds are on)."""
+        if not self.features["speaker"] or not self.theme_sounds:
+            return
+        name = self.theme_sound.get(self.state["theme"])
+        if name and not self.playing:
+            self.play({"action": "sound", "name": name})
 
     def sounds_listing(self):
         used = sum(len(w) for w in self.clips.values())
@@ -285,6 +312,19 @@ class Board:
                 if key != "listen" and not (isinstance(body[key], (int, float)) and 0 <= body[key] <= 100):
                     return f"{key} must be 0-100"
                 self.audio[key] = body[key] if key == "listen" else int(body[key])
+        if "theme_sounds" in body:
+            if self.legacy or not self.features["speaker"]:
+                return "unknown field theme_sounds"
+            if not isinstance(body["theme_sounds"], bool):
+                return "theme_sounds must be boolean"
+            self.theme_sounds = body["theme_sounds"]
+        if "theme_sound" in body:
+            if self.legacy or not self.features["speaker"]:
+                return "unknown field theme_sound"
+            name = body["theme_sound"]
+            if name is not None and not (isinstance(name, str) and (name in BUILTIN or name in self.clips)):
+                return "unknown sound"
+            self.theme_sound[body.get("theme", self.state["theme"])] = name
         if "theme" in body and body["theme"] not in {t["id"] for t in self.themes}:
             return "unknown theme"
         if "mood" in body and body["mood"] not in self.moods:
@@ -329,6 +369,8 @@ class Board:
                     "startle": lambda: self.lib.sim_startle(sim),
                     "roll": lambda: self.lib.sim_roll(sim),
                 }[action]()
+        if action == "startle":
+            self.startled()
         return None
 
     def frame_png(self):
