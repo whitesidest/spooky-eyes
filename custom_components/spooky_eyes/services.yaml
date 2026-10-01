@@ -1,7 +1,5 @@
 look:
   target:
-    device:
-      integration: spooky_eyes
     entity:
       integration: spooky_eyes
   fields:
@@ -33,8 +31,6 @@ look:
           unit_of_measurement: s
 action:
   target:
-    device:
-      integration: spooky_eyes
     entity:
       integration: spooky_eyes
   fields:

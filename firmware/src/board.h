@@ -14,8 +14,9 @@ constexpr int kLcdCs[2] = {47, 38};
 constexpr int kLcdRst[2] = {48, 8};
 constexpr int kLcdBl[2] = {46, 39};
 // MADCTL per panel: 0x08 = BGR; 0x20 = MV (swap rows/cols), 0x40 = MX, 0x80 = MY.
-// The DualEye panels are mounted rotated 90 degrees, so swap axes + mirror X (rotate 90 CW).
-constexpr uint8_t kLcdMadctl[2] = {0x68, 0x68};
+// The DualEye panels are mounted rotated 90 degrees, and 180 degrees from each other:
+// LCD1 = MV|MX (rotate 90 CW), LCD2 = MV|MY (rotate 90 CCW).
+constexpr uint8_t kLcdMadctl[2] = {0x68, 0xA8};
 
 #define LCD_SPI_HZ 80000000
 #define PIN_BATTERY_ADC 1
