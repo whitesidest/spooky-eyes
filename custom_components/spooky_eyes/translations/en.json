@@ -5,7 +5,10 @@
       "user": {
         "title": "Add Spooky Eyes",
         "description": "Enter the address of a Spooky Eyes board (e.g. spooky-eyes-a1b2c3.local or its IP).",
-        "data": {"host": "Host", "port": "Port"}
+        "data": {
+          "host": "Host",
+          "port": "Port"
+        }
       },
       "zeroconf_confirm": {
         "title": "Spooky Eyes found",
@@ -23,7 +26,9 @@
   },
   "entity": {
     "select": {
-      "theme": {"name": "Theme"},
+      "theme": {
+        "name": "Theme"
+      },
       "mood": {
         "name": "Mood",
         "state": {
@@ -35,20 +40,76 @@
         }
       }
     },
-    "switch": {"autonomous": {"name": "Idle animation"}},
-    "number": {"pupil": {"name": "Pupil dilation"}},
+    "switch": {
+      "autonomous": {
+        "name": "Idle animation"
+      },
+      "listen": {
+        "name": "React to noise"
+      }
+    },
+    "number": {
+      "pupil": {
+        "name": "Pupil dilation"
+      },
+      "volume": {
+        "name": "Volume"
+      },
+      "sensitivity": {
+        "name": "Noise sensitivity"
+      }
+    },
     "button": {
-      "blink": {"name": "Blink"},
-      "wink_left": {"name": "Wink left"},
-      "wink_right": {"name": "Wink right"},
-      "startle": {"name": "Startle"},
-      "roll": {"name": "Eye roll"},
-      "auto_pupil": {"name": "Auto pupil"}
+      "blink": {
+        "name": "Blink"
+      },
+      "wink_left": {
+        "name": "Wink left"
+      },
+      "wink_right": {
+        "name": "Wink right"
+      },
+      "startle": {
+        "name": "Startle"
+      },
+      "roll": {
+        "name": "Eye roll"
+      },
+      "auto_pupil": {
+        "name": "Auto pupil"
+      },
+      "stop_sound": {
+        "name": "Stop sound"
+      }
     },
     "sensor": {
-      "rssi": {"name": "Wi-Fi signal"},
-      "fps": {"name": "Frame rate"},
-      "uptime": {"name": "Uptime"}
+      "rssi": {
+        "name": "Wi-Fi signal"
+      },
+      "fps": {
+        "name": "Frame rate"
+      },
+      "uptime": {
+        "name": "Uptime"
+      },
+      "battery_voltage": {
+        "name": "Battery voltage"
+      },
+      "sound_level": {
+        "name": "Sound level"
+      }
+    },
+    "event": {
+      "noise": {
+        "name": "Noise",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "noise": "Loud noise"
+            }
+          }
+        }
+      }
     }
   },
   "selector": {
@@ -69,20 +130,55 @@
       "name": "Look",
       "description": "Point the eyes at a spot. Holds for `duration` seconds (0 = until released or idle animation takes over).",
       "fields": {
-        "x": {"name": "X", "description": "-1 = far left, 1 = far right (viewer's perspective)."},
-        "y": {"name": "Y", "description": "-1 = up, 1 = down."},
-        "duration": {"name": "Duration", "description": "Seconds to hold the gaze; 0 holds until released."}
+        "x": {
+          "name": "X",
+          "description": "-1 = far left, 1 = far right (viewer's perspective)."
+        },
+        "y": {
+          "name": "Y",
+          "description": "-1 = up, 1 = down."
+        },
+        "duration": {
+          "name": "Duration",
+          "description": "Seconds to hold the gaze; 0 holds until released."
+        }
       }
     },
     "action": {
       "name": "Action",
       "description": "Play an animation on the targeted eyes.",
       "fields": {
-        "action": {"name": "Action", "description": "What to do."},
-        "x": {"name": "X", "description": "Gaze x for look."},
-        "y": {"name": "Y", "description": "Gaze y for look."},
-        "duration": {"name": "Duration", "description": "Seconds, for look."}
+        "action": {
+          "name": "Action",
+          "description": "What to do."
+        },
+        "x": {
+          "name": "X",
+          "description": "Gaze x for look."
+        },
+        "y": {
+          "name": "Y",
+          "description": "Gaze y for look."
+        },
+        "duration": {
+          "name": "Duration",
+          "description": "Seconds, for look."
+        }
       }
+    },
+    "play_sound": {
+      "name": "Play sound",
+      "description": "Play a built-in effect (growl, heartbeat, whisper, creak, zap, chime, test) or an uploaded clip on the targeted boards.",
+      "fields": {
+        "sound": {
+          "name": "Sound",
+          "description": "Effect or uploaded clip name."
+        }
+      }
+    },
+    "stop_sound": {
+      "name": "Stop sound",
+      "description": "Stop whatever the targeted boards are playing."
     }
   }
 }

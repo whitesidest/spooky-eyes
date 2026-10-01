@@ -17,8 +17,11 @@ from homeassistant.helpers.typing import ConfigType
 from .api import SpookyEyesApiError, SpookyEyesClient
 from .const import (
     ACTION_LOOK,
+    ACTION_SOUND,
+    ACTION_STOP_SOUND,
     ACTIONS,
     ATTR_ACTION,
+    ATTR_SOUND,
     ATTR_DURATION,
     ATTR_X,
     ATTR_Y,
@@ -27,6 +30,8 @@ from .const import (
     PLATFORMS,
     SERVICE_ACTION,
     SERVICE_LOOK,
+    SERVICE_PLAY_SOUND,
+    SERVICE_STOP_SOUND,
 )
 from .coordinator import SpookyEyesCoordinator
 
@@ -54,6 +59,10 @@ ACTION_SCHEMA = cv.make_entity_service_schema(
         vol.Optional(ATTR_DURATION): _DURATION,
     }
 )
+
+_SOUND_NAME = vol.All(cv.string, vol.Length(min=1, max=24))
+PLAY_SOUND_SCHEMA = cv.make_entity_service_schema({vol.Required(ATTR_SOUND): _SOUND_NAME})
+STOP_SOUND_SCHEMA = cv.make_entity_service_schema({})
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
@@ -88,7 +97,15 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         params = {k: call.data[k] for k in (ATTR_X, ATTR_Y, ATTR_DURATION) if k in call.data}
         await _fan_out(call, call.data[ATTR_ACTION], params)
 
+    async def _play_sound(call: ServiceCall) -> None:
+        await _fan_out(call, ACTION_SOUND, {"name": call.data[ATTR_SOUND]})
+
+    async def _stop_sound(call: ServiceCall) -> None:
+        await _fan_out(call, ACTION_STOP_SOUND, {})
+
     hass.services.async_register(DOMAIN, SERVICE_LOOK, _look, schema=LOOK_SCHEMA)
+    hass.services.async_register(DOMAIN, SERVICE_PLAY_SOUND, _play_sound, schema=PLAY_SOUND_SCHEMA)
+    hass.services.async_register(DOMAIN, SERVICE_STOP_SOUND, _stop_sound, schema=STOP_SOUND_SCHEMA)
     hass.services.async_register(DOMAIN, SERVICE_ACTION, _action, schema=ACTION_SCHEMA)
     return True
 

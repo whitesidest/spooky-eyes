@@ -68,3 +68,26 @@ action:
           max: 3600
           step: 0.5
           unit_of_measurement: s
+play_sound:
+  target:
+    entity:
+      integration: spooky_eyes
+  fields:
+    sound:
+      required: true
+      example: growl
+      selector:
+        select:
+          custom_value: true
+          options:
+            - growl
+            - heartbeat
+            - whisper
+            - creak
+            - zap
+            - chime
+            - test
+stop_sound:
+  target:
+    entity:
+      integration: spooky_eyes

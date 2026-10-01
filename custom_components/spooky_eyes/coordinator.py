@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
@@ -10,7 +11,7 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .api import SpookyEyesApiError, SpookyEyesClient
-from .const import DOMAIN, FALLBACK_SCAN_INTERVAL
+from .const import DOMAIN, EVENT_NOISE, FALLBACK_SCAN_INTERVAL
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -33,6 +34,7 @@ class SpookyEyesCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.client = client
         self.info = info
         self.ws_connected = False
+        self._event_listeners: list[Callable[[dict[str, Any]], None]] = []
 
     async def _async_update_data(self) -> dict[str, Any]:
         try:
@@ -41,7 +43,7 @@ class SpookyEyesCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             raise UpdateFailed(str(err)) from err
 
     def start_push(self) -> None:
-        self.client.start_listener(self._handle_push, self._handle_connection)
+        self.client.start_listener(self._handle_push, self._handle_connection, self._handle_event)
 
     async def stop_push(self) -> None:
         await self.client.stop_listener()
@@ -50,6 +52,26 @@ class SpookyEyesCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     def _handle_push(self, state: dict[str, Any]) -> None:
         # A push may be partial; merge onto what we know.
         self.async_set_updated_data({**(self.data or {}), **state})
+
+    @callback
+    def _handle_event(self, event: dict[str, Any]) -> None:
+        """Board events (e.g. a loud noise): fire on the HA bus and notify event entities."""
+        if event.get("event") == "noise":
+            self.hass.bus.async_fire(
+                EVENT_NOISE,
+                {
+                    "board_id": self.info.get("id"),
+                    "name": self.info.get("name"),
+                    "direction": event.get("direction"),
+                },
+            )
+        for listener in list(self._event_listeners):
+            listener(event)
+
+    @callback
+    def add_event_listener(self, listener: Callable[[dict[str, Any]], None]) -> Callable[[], None]:
+        self._event_listeners.append(listener)
+        return lambda: self._event_listeners.remove(listener)
 
     @callback
     def _handle_connection(self, connected: bool) -> None:

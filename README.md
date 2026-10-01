@@ -67,6 +67,13 @@ client show up instantly; a 60 s poll backs it up if the socket drops.
 | `number.<board>_pupil_dilation` | Pupil override, 0–100 % (unknown = automatic) |
 | Buttons | Blink, Wink left, Wink right, Startle, Eye roll, Auto pupil |
 | Diagnostic sensors | Wi-Fi signal, Frame rate, Uptime (disabled by default) |
+| `number.<board>_volume` | Speaker volume, 0–100 % *(boards with a speaker)* |
+| `button.<board>_stop_sound` | Stop whatever is playing *(speaker)* |
+| `switch.<board>_react_to_noise` | Eyes jump and glance toward loud noises *(microphones)* |
+| `number.<board>_noise_sensitivity` | How quiet a noise still counts, 0–100 % *(microphones)* |
+| `event.<board>_noise` | Fires on every loud noise (attribute `direction`: -1 left … +1 right) *(microphones)* |
+| `sensor.<board>_battery` | Battery % (unknown with no cell); voltage as a diagnostic sensor *(battery)* |
+| `sensor.<board>_sound_level` | Microphone level, dBFS (diagnostic) *(microphones)* |
 
 ### Services
 
@@ -76,6 +83,11 @@ Both target devices or entities, so one call can drive every board at once.
   (0 = hold until released).
 - `spooky_eyes.action` — `action`: `blink`, `wink_left`, `wink_right`, `look`, `release`,
   `startle`, `roll` (+ optional `x`, `y`, `duration` for `look`).
+- `spooky_eyes.play_sound` — `sound`: a built-in effect (`growl`, `heartbeat`, `whisper`, `creak`,
+  `zap`, `chime`, `test`) or the name of a clip uploaded from the web controller.
+- `spooky_eyes.stop_sound`
+
+Every loud noise also fires a `spooky_eyes_noise` event on the HA bus (`board_id`, `name`, `direction`).
 
 ```yaml
 # Front-door motion: every pair of eyes snaps to the door and gets angry.
@@ -94,6 +106,20 @@ automation:
         target:
           entity_id: [select.porch_eyes_mood, select.window_eyes_mood]
         data: {option: angry}
+```
+
+```yaml
+# Something bangs near the skull: it growls back.
+automation:
+  - alias: Skull growls at noises
+    triggers:
+      - trigger: state
+        entity_id: event.porch_eyes_noise
+    actions:
+      - action: spooky_eyes.play_sound
+        target:
+          entity_id: light.porch_eyes
+        data: {sound: growl}
 ```
 
 ### Development

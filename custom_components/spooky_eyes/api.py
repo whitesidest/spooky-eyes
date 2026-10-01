@@ -64,11 +64,12 @@ class SpookyEyesClient:
         self,
         on_state: Callable[[dict[str, Any]], None],
         on_connection: Callable[[bool], None] | None = None,
+        on_event: Callable[[dict[str, Any]], None] | None = None,
     ) -> None:
         """Run a background WebSocket listener that reconnects with exponential backoff."""
         if self._ws_task is None or self._ws_task.done():
             self._ws_task = asyncio.get_running_loop().create_task(
-                self._listen_forever(on_state, on_connection)
+                self._listen_forever(on_state, on_connection, on_event)
             )
 
     async def stop_listener(self) -> None:
@@ -84,6 +85,7 @@ class SpookyEyesClient:
         self,
         on_state: Callable[[dict[str, Any]], None],
         on_connection: Callable[[bool], None] | None,
+        on_event: Callable[[dict[str, Any]], None] | None = None,
     ) -> None:
         backoff = WS_BACKOFF_MIN
         url = f"{self.base_url.replace('http://', 'ws://', 1)}/ws"
@@ -95,7 +97,7 @@ class SpookyEyesClient:
                         on_connection(True)
                     async for msg in ws:
                         if msg.type == aiohttp.WSMsgType.TEXT:
-                            self._dispatch(msg.data, on_state)
+                            self._dispatch(msg.data, on_state, on_event)
                         elif msg.type in (aiohttp.WSMsgType.CLOSED, aiohttp.WSMsgType.ERROR):
                             break
             except asyncio.CancelledError:
@@ -108,11 +110,19 @@ class SpookyEyesClient:
             backoff = min(backoff * 2, WS_BACKOFF_MAX)
 
     @staticmethod
-    def _dispatch(raw: str, on_state: Callable[[dict[str, Any]], None]) -> None:
+    def _dispatch(
+        raw: str,
+        on_state: Callable[[dict[str, Any]], None],
+        on_event: Callable[[dict[str, Any]], None] | None = None,
+    ) -> None:
         try:
             msg = json.loads(raw)
         except ValueError:
             _LOGGER.debug("Ignoring non-JSON websocket frame: %.80s", raw)
             return
-        if isinstance(msg, dict) and msg.get("type") == "state" and isinstance(msg.get("state"), dict):
+        if not isinstance(msg, dict):
+            return
+        if msg.get("type") == "state" and isinstance(msg.get("state"), dict):
             on_state(msg["state"])
+        elif msg.get("type") == "event" and isinstance(msg.get("event"), str) and on_event:
+            on_event(msg)

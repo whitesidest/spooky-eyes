@@ -8,7 +8,15 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import SpookyEyesConfigEntry
-from .const import ACTION_BLINK, ACTION_ROLL, ACTION_STARTLE, ACTION_WINK_LEFT, ACTION_WINK_RIGHT
+from .const import (
+    ACTION_BLINK,
+    ACTION_ROLL,
+    ACTION_STARTLE,
+    ACTION_STOP_SOUND,
+    ACTION_WINK_LEFT,
+    ACTION_WINK_RIGHT,
+    has_feature,
+)
 from .coordinator import SpookyEyesCoordinator
 from .entity import SpookyEyesEntity
 
@@ -26,14 +34,19 @@ ACTION_BUTTONS = (
     SpookyEyesButtonDescription(key=ACTION_ROLL, translation_key=ACTION_ROLL, icon="mdi:rotate-right", action=ACTION_ROLL),
 )
 
+STOP_SOUND_BUTTON = SpookyEyesButtonDescription(
+    key=ACTION_STOP_SOUND, translation_key=ACTION_STOP_SOUND, icon="mdi:volume-off", action=ACTION_STOP_SOUND
+)
+
 
 async def async_setup_entry(
     hass: HomeAssistant, entry: SpookyEyesConfigEntry, async_add_entities: AddConfigEntryEntitiesCallback
 ) -> None:
     coordinator = entry.runtime_data
-    async_add_entities(
-        [ActionButton(coordinator, d) for d in ACTION_BUTTONS] + [AutoPupilButton(coordinator, "auto_pupil")]
-    )
+    buttons = [ActionButton(coordinator, d) for d in ACTION_BUTTONS] + [AutoPupilButton(coordinator, "auto_pupil")]
+    if has_feature(coordinator.info, "speaker"):
+        buttons.append(ActionButton(coordinator, STOP_SOUND_BUTTON))
+    async_add_entities(buttons)
 
 
 class ActionButton(SpookyEyesEntity, ButtonEntity):
