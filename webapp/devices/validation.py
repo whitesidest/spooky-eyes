@@ -1,6 +1,7 @@
-"""Validates payloads before they are fanned out to devices."""
+"""Validates payloads before they are fanned out to devices or stored as scenes/groups."""
 MOODS = {"neutral", "angry", "surprised", "sleepy", "asleep"}
 ACTIONS = {"blink", "wink_left", "wink_right", "look", "release", "startle", "roll"}
+NAME_MAX = 32  # firmware limit for the board name
 
 
 class ValidationError(ValueError):
@@ -50,3 +51,46 @@ def clean_action(payload) -> dict:
         out["y"] = float(_num(payload.get("y", 0), -1, 1, "y"))
         out["duration"] = float(_num(payload.get("duration", 0), 0, 3600, "duration"))
     return out
+
+
+def clean_name(value, what="name", max_length=100) -> str:
+    if not isinstance(value, str):
+        raise ValidationError(f"{what} must be text")
+    value = " ".join(value.split())
+    if not value:
+        raise ValidationError(f"{what} is required")
+    if len(value) > max_length:
+        raise ValidationError(f"{what} must be at most {max_length} characters")
+    return value
+
+
+def clean_scene(data) -> dict:
+    """Returns {name, group (pk or None), state, action (or None)} for a scene create/update."""
+    if not isinstance(data, dict):
+        raise ValidationError("scene must be an object")
+    out = {"name": clean_name(data.get("name"), "scene name")}
+    group = data.get("group")
+    if group in (None, "", 0, "all"):
+        out["group"] = None
+    else:
+        try:
+            out["group"] = int(group)
+        except (TypeError, ValueError):
+            raise ValidationError("group must be a group id") from None
+    state = data.get("state") or {}
+    out["state"] = clean_state(state) if state else {}
+    action = data.get("action")
+    out["action"] = clean_action(action) if action else None
+    if not out["state"] and not out["action"]:
+        raise ValidationError("a scene needs at least one setting or an action")
+    return out
+
+
+def clean_group(data) -> dict:
+    """Returns {name, devices: [device ids]} for a group create/update."""
+    if not isinstance(data, dict):
+        raise ValidationError("group must be an object")
+    devices = data.get("devices", [])
+    if not isinstance(devices, list) or not all(isinstance(d, str) for d in devices):
+        raise ValidationError("devices must be a list of board ids")
+    return {"name": clean_name(data.get("name"), "group name"), "devices": devices}

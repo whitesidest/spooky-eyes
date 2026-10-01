@@ -1,0 +1,123 @@
+{% extends "devices/base.html" %}
+{% block content %}
+<div class="board-head">
+  <a class="back" href="{% url 'dashboard' %}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>All boards</a>
+  <div class="title-row">
+    <h1 id="board-name">{{ device.name }}</h1>
+    <button type="button" class="btn btn-icon btn-quiet rename" id="rename" aria-label="Rename this board">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4l10.5-10.5a2.1 2.1 0 0 0-3-3L5 17z"/><path d="m13.5 6.5 3 3"/></svg>
+    </button>
+  </div>
+  <p id="board-status" class="status"><span class="dot"></span><span class="status-text"></span></p>
+  <p id="name-note" class="muted small" hidden>Named here only — this board's firmware doesn't keep names.</p>
+</div>
+
+<section class="hero">
+  <div id="hero" class="eyes"></div>
+  <div class="power-row">
+    <label class="switch switch-lg"><span class="sr-only">Power</span><input type="checkbox" id="power"><span class="track"></span></label>
+    <label class="range">
+      <span class="sr-only">Brightness</span>
+      <input type="range" id="brightness" min="0" max="255" step="5">
+      <output id="brightness-out"></output>
+    </label>
+  </div>
+</section>
+
+<section class="section gallery">
+  <div class="section-head"><h2>Theme</h2></div>
+  <div id="categories" class="chips" role="group" aria-label="Theme categories">
+    <button type="button" class="chip" data-category="all" aria-pressed="true">All</button>
+    {% for cat, label, items in theme_groups %}<button type="button" class="chip" data-category="{{ cat }}" aria-pressed="false">{{ label }}</button>{% endfor %}
+  </div>
+  <div id="tiles" class="tiles">
+    {% for cat, label, items in theme_groups %}{% for t in items %}
+    <button type="button" class="tile{% if not t.small %} none-picture{% endif %}" data-theme="{{ t.id }}" data-category="{{ cat }}" aria-pressed="false">
+      <div class="eyes">{% if t.small %}<img src="{{ t.small }}" alt="" loading="lazy" width="250" height="120">{% endif %}</div>
+      <span>{{ t.name }}</span>
+    </button>
+    {% endfor %}{% endfor %}
+  </div>
+</section>
+
+<section class="section">
+  <div class="section-head"><h2>Mood</h2></div>
+  <div id="moods" class="seg" role="group" aria-label="Mood">
+    {% for m in moods %}<button type="button" data-mood="{{ m }}" aria-pressed="false">{{ m|capfirst }}</button>{% endfor %}
+  </div>
+</section>
+
+<section class="section">
+  <div class="section-head"><h2>Actions</h2></div>
+  <div class="btn-grid">
+    <button type="button" class="btn" data-action="blink">Blink</button>
+    <button type="button" class="btn" data-action="wink_left">Wink left</button>
+    <button type="button" class="btn" data-action="wink_right">Wink right</button>
+    <button type="button" class="btn" data-action="startle">Startle</button>
+    <button type="button" class="btn" data-action="roll">Eye roll</button>
+  </div>
+  <label class="switch"><input type="checkbox" id="idle"><span class="track"></span><span>Idle animation (glances and blinks on its own)</span></label>
+</section>
+
+<section class="section">
+  <div class="section-head">
+    <h2>Gaze</h2>
+    <a class="btn btn-quiet" href="{% url 'puppeteer' %}?device={{ device.device_id }}">Open in Puppeteer</a>
+  </div>
+  <div class="pad-wrap">
+    <div id="pad" class="pad" role="application" tabindex="0" aria-label="Gaze pad. Drag to steer the eyes; arrow keys nudge, Home recentres."><div class="ring"></div><div class="puck"></div></div>
+    <p id="readout" class="readout">x 0.00  y 0.00</p>
+    <div class="btn-row">
+      <label class="switch"><input type="checkbox" id="hold"><span class="track"></span><span>Hold where I let go</span></label>
+      <button type="button" class="btn btn-ghost" id="release">Release</button>
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="btn-row">
+    <button type="button" class="btn" id="save-scene">Save this look as a scene</button>
+  </div>
+</section>
+
+<details class="diag">
+  <summary>Pupil, diagnostics and more</summary>
+  <div class="diag-body">
+    <label class="switch"><input type="checkbox" id="pupil-auto" checked><span class="track"></span><span>Pupil follows the theme and mood</span></label>
+    <label class="range">
+      <span class="sr-only">Pupil size</span>
+      <input type="range" id="pupil" min="0" max="100" step="5" disabled>
+      <output>Pupil</output>
+    </label>
+    <hr class="rule">
+    <dl class="kv">
+      <dt>Address</dt><dd id="diag-host"></dd>
+      <dt>Board id</dt><dd id="diag-id"></dd>
+      <dt>Firmware</dt><dd id="diag-fw"></dd>
+      <dt>Model</dt><dd id="diag-model"></dd>
+      <dt>Wi-Fi signal</dt><dd id="diag-rssi"></dd>
+      <dt>Frame rate</dt><dd id="diag-fps"></dd>
+      <dt>Uptime</dt><dd id="diag-uptime"></dd>
+    </dl>
+    <hr class="rule">
+    <div class="btn-row">
+      <button type="button" class="btn btn-ghost btn-danger" id="forget">Forget this board</button>
+    </div>
+  </div>
+</details>
+
+<dialog id="rename-dialog" class="sheet">
+  <form method="dialog">
+    <h2>Rename board</h2>
+    <label class="field">
+      <span>Name (shown here and on Home Assistant)</span>
+      <input class="input" name="name" maxlength="{{ snapshot.name_max }}" required autocomplete="off">
+    </label>
+    <div class="dialog-actions">
+      <button type="button" class="btn btn-ghost" data-close>Cancel</button>
+      <button type="submit" class="btn btn-primary">Rename</button>
+    </div>
+  </form>
+</dialog>
+{% endblock %}
+{% block scripts %}<script>SE.board(); document.querySelectorAll("dialog [data-close]").forEach((b) => b.addEventListener("click", () => b.closest("dialog").close()));</script>{% endblock %}

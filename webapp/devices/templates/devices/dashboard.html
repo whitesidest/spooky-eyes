@@ -1,72 +1,88 @@
 {% extends "devices/base.html" %}
 {% block content %}
-<section class="panel fleet">
-  <h2>All boards</h2>
-  <div class="row">
-    <label>Theme
-      <select id="all-theme">
-        <option value="">—</option>
-        {% for category, themes in theme_groups %}<optgroup label="{{ category|title }}">{% for t in themes %}<option value="{{ t.id }}">{{ t.name }}</option>{% endfor %}</optgroup>{% endfor %}
-      </select>
-    </label>
-    <label>Mood
-      <select id="all-mood">
-        <option value="">—</option>
-        <option>neutral</option><option>angry</option><option>surprised</option><option>sleepy</option><option>asleep</option>
-      </select>
-    </label>
-    <button data-all-action="blink">Blink</button>
-    <button data-all-action="startle">Startle</button>
-    <button data-all-action="roll">Eye roll</button>
-    <button data-all-state='{"on": true}'>All on</button>
-    <button data-all-state='{"on": false}' class="ghost">All off</button>
+<div class="head">
+  <div>
+    <h1>Boards</h1>
+    <p class="sub" id="fleet-count">{% if boards %}{{ boards|length }} board{{ boards|length|pluralize }}, {{ online }} online{% endif %}</p>
   </div>
-  {% if scenes %}
-  <h3>Scenes</h3>
-  <div class="row">
-    {% for s in scenes %}<button class="scene" data-scene="{{ s.pk }}">{{ s.name }}{% if s.group %} <small>· {{ s.group.name }}</small>{% endif %}</button>{% endfor %}
+  <div class="head-actions">
+    <button type="button" class="btn btn-ghost" data-scan>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      Scan network
+    </button>
   </div>
+</div>
+
+<section id="empty" class="empty" {% if boards %}hidden{% endif %}>
+  <h2>No boards yet</h2>
+  <p class="muted">Each pair of eyes is a small Wi-Fi board. Three ways to get one in here:</p>
+  <ol>
+    <li><strong>Scan the network.</strong> Boards already on your Wi-Fi answer within a few seconds.</li>
+    <li><strong>Add by address.</strong> Type its IP or <code>spooky-eyes-xxxxxx.local</code> below.</li>
+    <li><strong>Brand-new board?</strong> It makes its own Wi-Fi network called <code>SpookyEyes-xxxxxx</code>. Join it from your phone, pick your home Wi-Fi, then scan here.</li>
+  </ol>
+  <div class="btn-row">
+    <button type="button" class="btn btn-primary" data-scan>Scan network</button>
+  </div>
+  <form class="add add-row" autocomplete="off">
+    <label class="sr-only" for="add-host-empty">Board address</label>
+    <input class="input" id="add-host-empty" name="host" placeholder="IP or spooky-eyes-xxxxxx.local" required>
+    <button type="submit" class="btn">Add</button>
+  </form>
+</section>
+
+<section id="fleet-bar" class="fleet-bar" {% if not boards %}hidden{% endif %}>
+  <div class="btn-row">
+    <button type="button" class="btn" data-all-action="blink">Blink all</button>
+    <button type="button" class="btn" data-all-action="startle">Startle all</button>
+    <button type="button" class="btn btn-ghost" data-all-state='{"on": true}' data-done="Switched on">All on</button>
+    <button type="button" class="btn btn-ghost" data-all-state='{"on": false}' data-done="Switched off">All off</button>
+  </div>
+  {% if snapshot.scenes %}
+  <div class="section-head">
+    <h2>Scenes</h2>
+    <a class="btn btn-quiet" href="{% url 'scenes' %}">Manage</a>
+  </div>
+  <div id="scene-strip" class="scene-strip"></div>
+  {% else %}
+  <p class="muted small">Save a favourite look as a <a href="{% url 'scenes' %}">scene</a> to apply it from here in one tap.</p>
   {% endif %}
 </section>
 
-<section class="panel">
-  <div class="row between">
-    <h2>Boards <span id="count" class="muted"></span></h2>
-    <div class="row">
-      <form id="add-form" class="row">
-        <input name="host" placeholder="IP or hostname" required aria-label="Board host">
-        <button type="submit">Add</button>
-      </form>
-      <button id="scan">Scan network</button>
-    </div>
-  </div>
-  <div id="cards" class="cards"><p class="muted">Loading…</p></div>
-</section>
+<section id="fleet" class="fleet" aria-live="polite"></section>
+
+{% if boards %}
+<form class="add add-row" autocomplete="off">
+  <label class="sr-only" for="add-host">Board address</label>
+  <input class="input" id="add-host" name="host" placeholder="Add by IP or spooky-eyes-xxxxxx.local">
+  <button type="submit" class="btn btn-ghost">Add</button>
+</form>
+{% endif %}
 
 <template id="card-tpl">
   <article class="card">
-    <header>
-      <span class="dot"></span>
-      <h3 class="name"></h3>
-      <label class="switch" title="Power"><input type="checkbox" class="on"><span></span></label>
-    </header>
-    <p class="meta muted"></p>
-    <img class="live" alt="Live view of this board's eyes" hidden>
-    <label>Brightness <input type="range" class="brightness" min="0" max="255"></label>
-    <div class="grid2">
-      <label>Theme <select class="theme"></select></label>
-      <label>Mood <select class="mood"></select></label>
+    <div class="eyes"><a href="#" aria-label="Open board"></a></div>
+    <div class="card-body">
+      <div class="card-title">
+        <a href="#"></a>
+        <label class="switch power" title="Power"><span class="sr-only">Power</span><input type="checkbox"><span class="track"></span></label>
+      </div>
+      <div class="card-meta">
+        <span class="status"><span class="dot"></span><span class="status-text"></span></span>
+        <span class="look"></span>
+      </div>
+      <label class="range">
+        <span class="sr-only">Brightness</span>
+        <input type="range" min="0" max="255" step="5">
+        <output></output>
+      </label>
+      <div class="card-actions">
+        <button type="button" class="btn" data-action="blink">Blink</button>
+        <button type="button" class="btn" data-action="startle">Startle</button>
+        <a class="btn btn-ghost puppet-link" href="#">Puppet</a>
+      </div>
     </div>
-    <label class="check"><input type="checkbox" class="autonomous"> Idle animation</label>
-    <div class="row actions">
-      <button data-action="blink">Blink</button>
-      <button data-action="wink_left">Wink L</button>
-      <button data-action="wink_right">Wink R</button>
-      <button data-action="startle">Startle</button>
-      <button data-action="roll">Roll</button>
-    </div>
-    <p class="stats muted"></p>
   </article>
 </template>
 {% endblock %}
-{% block scripts %}<script>SpookyEyes.dashboard();</script>{% endblock %}
+{% block scripts %}<script>SE.fleet();</script>{% endblock %}

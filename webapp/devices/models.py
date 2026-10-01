@@ -7,6 +7,10 @@ ONLINE_WINDOW_S = 120
 class Device(models.Model):
     device_id = models.CharField(max_length=12, unique=True, help_text="12 lowercase hex digits of the MAC")
     name = models.CharField(max_length=100)
+    name_is_local = models.BooleanField(
+        default=False,
+        help_text="The name lives only here (the board's firmware couldn't store it); boards never overwrite it",
+    )
     host = models.CharField(max_length=255)
     port = models.PositiveIntegerField(default=80)
     model = models.CharField(max_length=50, blank=True)

@@ -1,0 +1,103 @@
+{% extends "devices/base.html" %}
+{% block content %}
+<div class="head">
+  <div>
+    <h1>Scenes</h1>
+    <p class="sub">A saved look — theme, mood, brightness, a glance — applied to a group or every board in one tap.</p>
+  </div>
+  <div class="head-actions"><button type="button" class="btn btn-primary" id="new-scene">New scene</button></div>
+</div>
+<section id="scenes-empty" class="empty" hidden>
+  <h2>No scenes yet</h2>
+  <p class="muted">Try “Lights out” (everything off), or “Intruder” (Sauron, angry, staring at the door).</p>
+  <div class="btn-row"><button type="button" class="btn btn-primary">Create a scene</button></div>
+</section>
+<section id="scene-list" class="scene-list"></section>
+
+<div class="head">
+  <div>
+    <h1>Groups</h1>
+    <p class="sub">Boards that act together, like the porch or the front window.</p>
+  </div>
+  <div class="head-actions"><button type="button" class="btn" id="new-group">New group</button></div>
+</div>
+<section id="groups-empty" class="empty" hidden>
+  <h2>No groups yet</h2>
+  <p class="muted">Without groups, scenes and Puppeteer still work on every board at once.</p>
+  <div class="btn-row"><button type="button" class="btn">Create a group</button></div>
+</section>
+<section id="group-list" class="group-list"></section>
+
+<dialog id="scene-dialog" class="sheet">
+  <form method="dialog" autocomplete="off">
+    <h2>New scene</h2>
+    <label class="field"><span>Name</span><input class="input" name="name" required maxlength="100"></label>
+    <label class="field"><span>Applies to</span><select class="input" name="group"><option value="">All boards</option></select></label>
+    <div class="field">
+      <span>Theme (optional)</span>
+      <input type="hidden" name="theme">
+      <div id="scene-themes" class="tiles tiles-compact">
+        {% for cat, label, items in theme_groups %}{% for t in items %}
+        <button type="button" class="tile{% if not t.small %} none-picture{% endif %}" data-theme="{{ t.id }}" aria-pressed="false">
+          <div class="eyes">{% if t.small %}<img src="{{ t.small }}" alt="" loading="lazy" width="250" height="120">{% endif %}</div>
+          <span>{{ t.name }}</span>
+        </button>
+        {% endfor %}{% endfor %}
+      </div>
+    </div>
+    <div class="field">
+      <span>Mood (optional)</span>
+      <input type="hidden" name="mood">
+      <div id="scene-moods" class="seg" role="group" aria-label="Mood">
+        {% for m in snapshot.moods %}<button type="button" data-mood="{{ m }}" aria-pressed="false">{{ m|capfirst }}</button>{% endfor %}
+      </div>
+    </div>
+    <div class="scene-form-grid">
+      <label class="field"><span>Power</span>
+        <select class="input" name="power"><option value="">Leave as is</option><option value="on">On</option><option value="off">Off</option></select>
+      </label>
+      <label class="field"><span>Idle animation</span>
+        <select class="input" name="idle"><option value="">Leave as is</option><option value="on">On</option><option value="off">Off</option></select>
+      </label>
+    </div>
+    <label class="check"><input type="checkbox" name="set_brightness"><span>Set brightness</span></label>
+    <label class="range">
+      <span class="sr-only">Brightness</span>
+      <input type="range" name="brightness" min="0" max="255" step="5" value="200" disabled>
+      <output id="scene-bri-out">78%</output>
+    </label>
+    <label class="check"><input type="checkbox" name="set_look"><span>Look somewhere</span></label>
+    <div id="look-fields" class="pad-wrap" hidden>
+      <div id="look-pad" class="pad pad-sm" role="application" tabindex="0" aria-label="Where to look. Drag; arrow keys nudge."><div class="ring"></div><div class="puck"></div></div>
+      <p id="look-readout" class="readout">x 0.00  y 0.00</p>
+      <label class="field"><span>For how long (seconds, 0 holds until released)</span><input class="input" type="number" name="duration" min="0" max="3600" step="0.5" value="5"></label>
+    </div>
+    <label class="field"><span>Then</span>
+      <select class="input" name="after">
+        <option value="">Nothing</option><option value="blink">Blink</option><option value="startle">Startle</option><option value="roll">Eye roll</option><option value="wink_left">Wink left</option><option value="wink_right">Wink right</option><option value="release">Release gaze</option>
+      </select>
+    </label>
+    <div class="dialog-actions">
+      <button type="button" class="btn btn-ghost btn-danger" id="scene-delete" hidden>Delete</button>
+      <span class="spacer"></span>
+      <button type="button" class="btn btn-ghost" data-close>Cancel</button>
+      <button type="submit" class="btn btn-primary">Save scene</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="group-dialog" class="sheet">
+  <form method="dialog" autocomplete="off">
+    <h2>New group</h2>
+    <label class="field"><span>Name</span><input class="input" name="name" required maxlength="100" placeholder="Porch"></label>
+    <div class="field"><span>Boards</span><div id="group-members" class="check-list"></div></div>
+    <div class="dialog-actions">
+      <button type="button" class="btn btn-ghost btn-danger" id="group-delete" hidden>Delete</button>
+      <span class="spacer"></span>
+      <button type="button" class="btn btn-ghost" data-close>Cancel</button>
+      <button type="submit" class="btn btn-primary">Save group</button>
+    </div>
+  </form>
+</dialog>
+{% endblock %}
+{% block scripts %}<script>SE.scenes();</script>{% endblock %}

@@ -2,22 +2,39 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}Spooky Eyes{% endblock %}</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#15121f">
+  <meta name="color-scheme" content="dark">
+  <title>{% if page_title %}{{ page_title }} · Spooky Eyes{% else %}Spooky Eyes{% endif %}</title>
+  <link rel="icon" href="{% static 'devices/eye.svg' %}" type="image/svg+xml">
   <link rel="stylesheet" href="{% static 'devices/app.css' %}">
 </head>
-<body>
+<body class="page-{{ request.resolver_match.url_name }}">
+  <a class="skip" href="#main">Skip to content</a>
   <header class="top">
-    <a class="brand" href="{% url 'dashboard' %}"><span class="brand-eye" aria-hidden="true"></span>Spooky Eyes</a>
-    <nav>
-      <a href="{% url 'dashboard' %}" {% if request.resolver_match.url_name == 'dashboard' %}aria-current="page"{% endif %}>Boards</a>
-      <a href="{% url 'gaze' %}" {% if request.resolver_match.url_name == 'gaze' %}aria-current="page"{% endif %}>Gaze pad</a>
-      <a href="{% url 'admin:index' %}">Groups &amp; scenes</a>
+    <a class="brand" href="{% url 'dashboard' %}" aria-label="Spooky Eyes, home">
+      <svg class="brand-eye" viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="15" fill="#2a1d17"/><circle cx="16" cy="16" r="10" fill="url(#iris)"/><circle cx="16" cy="16" r="4.2" fill="#0b0810"/><circle cx="12.5" cy="12" r="1.8" fill="#fff4dd" opacity=".85"/><defs><radialGradient id="iris"><stop offset="0" stop-color="#ffd27a"/><stop offset=".55" stop-color="#ff8a1f"/><stop offset="1" stop-color="#9a2a12"/></radialGradient></defs></svg>
+      <span>Spooky Eyes</span>
+    </a>
+    <nav class="tabs" aria-label="Main">
+      <a href="{% url 'dashboard' %}" {% if request.resolver_match.url_name in 'dashboard board' %}aria-current="page"{% endif %}>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12Z"/><circle cx="12" cy="12" r="3.2"/></svg>
+        <span>Boards</span>
+      </a>
+      <a href="{% url 'puppeteer' %}" {% if request.resolver_match.url_name == 'puppeteer' %}aria-current="page"{% endif %}>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.6"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/></svg>
+        <span>Puppeteer</span>
+      </a>
+      <a href="{% url 'scenes' %}" {% if request.resolver_match.url_name == 'scenes' %}aria-current="page"{% endif %}>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7.5 12 3l8 4.5v9L12 21l-8-4.5z"/><path d="M4 7.5 12 12l8-4.5M12 12v9"/></svg>
+        <span>Scenes</span>
+      </a>
     </nav>
   </header>
-  <main>{% block content %}{% endblock %}</main>
-  <div id="toast" role="status" aria-live="polite"></div>
+  <main id="main" class="main">{% block content %}{% endblock %}</main>
+  <div id="toasts" class="toasts" role="status" aria-live="polite"></div>
   {% csrf_token %}
+  {{ snapshot|json_script:"snapshot" }}
   <script src="{% static 'devices/app.js' %}"></script>
   {% block scripts %}{% endblock %}
 </body>
