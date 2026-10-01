@@ -8,6 +8,7 @@
 #include <ESPmDNS.h>
 #include <Update.h>
 #include <WiFi.h>
+#include <esp_mac.h>
 
 #include "board.h"
 #include "engine.h"
@@ -142,9 +143,12 @@ void goOnline() {
 void begin() {
   WiFi.mode(WIFI_STA);
   WiFi.setSleep(false);  // lower latency for live gaze control
-  String mac = WiFi.macAddress();
-  mac.replace(":", "");
-  mac.toLowerCase();
+  // Read the station MAC from eFuse: WiFi.macAddress() can return zeros before the netif is up.
+  uint8_t raw[6];
+  esp_read_mac(raw, ESP_MAC_WIFI_STA);
+  char hex[13];
+  snprintf(hex, sizeof hex, "%02x%02x%02x%02x%02x%02x", raw[0], raw[1], raw[2], raw[3], raw[4], raw[5]);
+  String mac = hex;
   engine::setIdentity(mac);
   hostname = "spooky-eyes-" + mac.substring(6);
   WiFi.setHostname(hostname.c_str());

@@ -35,7 +35,10 @@ void* sim_new(uint32_t seed, const char* theme) {
   if (!t) t = themeAt(0);
   s->cache.build(t);
   s->ctl.setTheme(t);
-  for (auto& r : s->ren) r.setCache(&s->cache);
+  for (auto& r : s->ren) {
+    r.setCache(&s->cache);
+    r.setHalfRes(true);  // match the device
+  }
   return s;
 }
 

@@ -8,7 +8,7 @@
 
 #if defined(ESP_PLATFORM)
 #include <esp_heap_caps.h>
-#pragma GCC optimize("O3")
+#pragma GCC optimize("O3,fast-math")
 #endif
 
 namespace eyes {
@@ -18,6 +18,16 @@ constexpr float kCentre = kSize / 2.0f;
 constexpr float kScreenR = kSize / 2.0f;
 constexpr float kPi = 3.14159265f;
 constexpr float kTwoPi = 6.2831853f;
+
+// Small, hot per-frame buffers: prefer fast internal RAM.
+void* fastAlloc(size_t bytes) {
+#if defined(ESP_PLATFORM)
+  void* p = heap_caps_malloc(bytes, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+  return p ? p : heap_caps_malloc(bytes, MALLOC_CAP_SPIRAM);
+#else
+  return malloc(bytes);
+#endif
+}
 
 void* bigAlloc(size_t bytes) {
 #if defined(ESP_PLATFORM)
@@ -129,7 +139,7 @@ void ThemeCache::build(const ThemeSpec* theme) {
 Renderer::Renderer() {
   int cells = kFireCells * kFireCells;
   int polar = kFireRadii * kFireAngles;
-  fire_ = (float*)bigAlloc(sizeof(float) * (cells > polar ? cells : polar));
+  fire_ = (float*)fastAlloc(sizeof(float) * (cells > polar ? cells : polar));
 }
 
 Renderer::~Renderer() { free(fire_); }
@@ -288,9 +298,8 @@ float Renderer::fireAt(float fx, float fy, float ux, float uy, float r) const {
   return clamp01(base * (n * 2.2f - 0.45f));
 }
 
-Renderer::Col Renderer::shade(int px, int py) const {
+Renderer::Col Renderer::shade(int px, int py, float fx, float fy) const {
   const ThemeSpec& t = *t_;
-  const float fx = px + 0.5f, fy = py + 0.5f;
   const float sdx = fx - kCentre, sdy = fy - kCentre;
   const float rScreen = sqrtf(sdx * sdx + sdy * sdy);
   const float rim = 1.0f - 0.45f * smoothstep(70.0f, 121.0f, rScreen);
@@ -612,7 +621,51 @@ Renderer::Col Renderer::shade(int px, int py) const {
   return col;
 }
 
+namespace {
+inline uint16_t quantize(float cr, float cg, float cb, float d, bool byteSwap) {
+  int r = (int)(cr * 31.0f + 0.5f + d);
+  int g = (int)(cg * 63.0f + 0.5f + d);
+  int b = (int)(cb * 31.0f + 0.5f + d);
+  r = r < 0 ? 0 : (r > 31 ? 31 : r);
+  g = g < 0 ? 0 : (g > 63 ? 63 : g);
+  b = b < 0 ? 0 : (b > 31 ? 31 : b);
+  uint16_t px = (uint16_t)((r << 11) | (g << 5) | b);
+  return byteSwap ? (uint16_t)((px >> 8) | (px << 8)) : px;
+}
+}  // namespace
+
+void Renderer::renderRowsHalf(int y0, int y1, uint16_t* out, bool byteSwap) const {
+  for (int y = y0; y < y1; y += 2) {
+    uint16_t* row0 = out + (y - y0) * kSize;
+    uint16_t* row1 = row0 + kSize;
+    const float fy = y + 1.0f;  // centre of the 2x2 block
+    const float sdy = fy - kCentre;
+    float half2 = (kScreenR + 2.5f) * (kScreenR + 2.5f) - sdy * sdy;
+    int xs = kSize, xe = kSize;
+    if (half2 > 0) {
+      float h = sqrtf(half2);
+      xs = ((int)(kCentre - h)) & ~1;
+      xe = (int)(kCentre + h) + 2;
+      if (xs < 0) xs = 0;
+      if (xe > kSize) xe = kSize;
+    }
+    memset(row0, 0, kSize * 2);
+    memset(row1, 0, kSize * 2);
+    for (int x = xs; x + 1 < xe; x += 2) {
+      Col c = shade(x, y, x + 1.0f, fy);
+      float r = clamp01(c.r), g = clamp01(c.g), b = clamp01(c.b);
+      const uint8_t* b0 = kBayer[y & 3];
+      const uint8_t* b1 = kBayer[(y + 1) & 3];
+      row0[x] = quantize(r, g, b, (b0[x & 3] + 0.5f) * (1.0f / 16.0f) - 0.5f, byteSwap);
+      row0[x + 1] = quantize(r, g, b, (b0[(x + 1) & 3] + 0.5f) * (1.0f / 16.0f) - 0.5f, byteSwap);
+      row1[x] = quantize(r, g, b, (b1[x & 3] + 0.5f) * (1.0f / 16.0f) - 0.5f, byteSwap);
+      row1[x + 1] = quantize(r, g, b, (b1[(x + 1) & 3] + 0.5f) * (1.0f / 16.0f) - 0.5f, byteSwap);
+    }
+  }
+}
+
 void Renderer::renderRows(int y0, int y1, uint16_t* out, bool byteSwap) const {
+  if (halfRes_) return renderRowsHalf(y0, y1, out, byteSwap);
   for (int y = y0; y < y1; ++y) {
     uint16_t* row = out + (y - y0) * kSize;
     const float sdy = y + 0.5f - kCentre;
@@ -633,7 +686,7 @@ void Renderer::renderRows(int y0, int y1, uint16_t* out, bool byteSwap) const {
     memset(row, 0, xs * 2);
     memset(row + xe, 0, (kSize - xe) * 2);
     for (int x = xs; x < xe; ++x) {
-      Col c = shade(x, y);
+      Col c = shade(x, y, x + 0.5f, y + 0.5f);
       float d = (kBayer[y & 3][x & 3] + 0.5f) / 16.0f - 0.5f;
       int r = (int)(clamp01(c.r) * 31.0f + 0.5f + d);
       int g = (int)(clamp01(c.g) * 63.0f + 0.5f + d);

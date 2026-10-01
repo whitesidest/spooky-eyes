@@ -4,6 +4,7 @@
 #include <Preferences.h>
 #include <WiFi.h>
 #include <esp_random.h>
+#include <esp_timer.h>
 
 #include "board.h"
 #include "display.h"
@@ -51,14 +52,31 @@ void changed() {
   lastChangeMs = millis();
 }
 
+// Per-eye timing totals (us) since the last log line: setup, shading, waiting on SPI.
+volatile uint32_t tBegin[2], tShade[2], tWait[2], tFrames[2];
+
 void renderEye(int p) {
+  int64_t t0 = esp_timer_get_time();
   ren[p]->begin(frame[p]);
+  int64_t t1 = esp_timer_get_time();
+  int64_t shade = 0, wait = 0;
   for (int y0 = 0; y0 < display::kHeight; y0 += display::kStripRows) {
+    int64_t a = esp_timer_get_time();
     uint16_t* buf = display::beginStrip(p);
+    int64_t b = esp_timer_get_time();
     ren[p]->renderRows(y0, y0 + display::kStripRows, buf, true);
+    int64_t c = esp_timer_get_time();
     display::pushStrip(p, y0);
+    wait += b - a;
+    shade += c - b;
   }
+  int64_t a = esp_timer_get_time();
   display::finishFrame(p);
+  wait += esp_timer_get_time() - a;
+  tBegin[p] = tBegin[p] + (uint32_t)(t1 - t0);
+  tShade[p] = tShade[p] + (uint32_t)shade;
+  tWait[p] = tWait[p] + (uint32_t)wait;
+  tFrames[p] = tFrames[p] + 1;
 }
 
 void workerTask(void*) {
@@ -69,7 +87,35 @@ void workerTask(void*) {
   }
 }
 
+#ifdef BENCH_THEMES
+// Times one full frame of every theme (shading only, no SPI) and prints it. Build with -DBENCH_THEMES.
+void benchThemes() {
+  static uint16_t strip[display::kWidth * display::kStripRows];
+  eyes::EyeState st;
+  st.time = 3.0f;
+  st.pupil = 0.5f;
+  for (int i = 0; i < eyes::themeCount(); ++i) {
+    const eyes::ThemeSpec* t = eyes::themeAt(i);
+    int64_t a = esp_timer_get_time();
+    cache->build(t);
+    int64_t b = esp_timer_get_time();
+    ren[0]->begin(st);
+    int64_t c = esp_timer_get_time();
+    for (int y0 = 0; y0 < display::kHeight; y0 += display::kStripRows)
+      ren[0]->renderRows(y0, y0 + display::kStripRows, strip, true);
+    int64_t d = esp_timer_get_time();
+    Serial.printf("bench %-15s cache %5lld ms  begin %5lld ms  shade %5lld ms\n", t->id, (b - a) / 1000, (c - b) / 1000,
+                  (d - c) / 1000);
+  }
+  cache->build(cfg.theme);
+}
+#endif
+
 void renderTask(void*) {
+#ifdef BENCH_THEMES
+  delay(1500);  // let USB serial attach
+  benchThemes();
+#endif
   bool panelsOn = true;
   int shownBrightness = -1;
   uint32_t last = micros();
@@ -181,6 +227,7 @@ void begin() {
   for (int p = 0; p < 2; ++p) {
     ren[p] = new eyes::Renderer();
     ren[p]->setCache(cache);
+    ren[p]->setHalfRes(true);
   }
 
   if (!display::begin()) {
@@ -196,7 +243,15 @@ void loop() {
   static uint32_t lastLog = 0;
   if (millis() - lastLog > 5000) {
     lastLog = millis();
-    Serial.printf("fps %.1f  heap %u  psram %u\n", fps, (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getFreePsram());
+    Serial.printf("fps %.1f  heap %u  psram %u  theme %s\n", fps, (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getFreePsram(),
+                  cfg.theme->id);
+    for (int p = 0; p < 2; ++p) {
+      uint32_t n = tFrames[p] ? tFrames[p] : 1;
+      Serial.printf("  eye%d: begin %lu us  shade %lu us  spi-wait %lu us  (per frame, %lu frames)\n", p,
+                    (unsigned long)(tBegin[p] / n), (unsigned long)(tShade[p] / n), (unsigned long)(tWait[p] / n),
+                    (unsigned long)tFrames[p]);
+      tBegin[p] = tShade[p] = tWait[p] = tFrames[p] = 0;
+    }
   }
   if (version != savedVersion && millis() - lastChangeMs > kSaveDelayMs) {
     Guard g;
@@ -307,7 +362,10 @@ void writeInfo(JsonObject out) {
   out["name"] = deviceName();
   out["model"] = BOARD_MODEL;
   out["fw"] = FW_VERSION;
-  out["mac"] = WiFi.macAddress();
+  char mac[18];
+  snprintf(mac, sizeof mac, "%c%c:%c%c:%c%c:%c%c:%c%c:%c%c", id[0], id[1], id[2], id[3], id[4], id[5], id[6], id[7],
+           id[8], id[9], id[10], id[11]);
+  out["mac"] = id.length() == 12 ? String(mac) : WiFi.macAddress();
   out["ip"] = WiFi.localIP().toString();
   out["eyes"] = 2;
   JsonArray themes = out["themes"].to<JsonArray>();

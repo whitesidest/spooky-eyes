@@ -58,18 +58,23 @@ class Renderer {
   // Shade rows [y0, y1) into out (width kSize). RGB565; byteSwap for SPI panels.
   void renderRows(int y0, int y1, uint16_t* out, bool byteSwap) const;
 
+  // Shade one sample per 2x2 block (4x cheaper; y0/y1 must be even). Default on-device.
+  void setHalfRes(bool on) { halfRes_ = on; }
+  bool halfRes() const { return halfRes_; }
+
  private:
   struct Col {
     float r, g, b;
   };
-  Col shade(int px, int py) const;
+  Col shade(int px, int py, float fx, float fy) const;
+  void renderRowsHalf(int y0, int y1, uint16_t* out, bool byteSwap) const;
   float fireAt(float fx, float fy, float ux, float uy, float r) const;
   void buildFireField();
 
-  static constexpr int kFireGrid = 4;  // px per cell (rising fire)
+  static constexpr int kFireGrid = 6;  // px per cell (rising fire)
   static constexpr int kFireCells = kSize / kFireGrid + 2;
-  static constexpr int kFireAngles = 96;
-  static constexpr int kFireRadii = 48;
+  static constexpr int kFireAngles = 64;
+  static constexpr int kFireRadii = 32;
 
   const ThemeCache* cache_ = nullptr;
   const ThemeSpec* t_ = nullptr;
@@ -92,6 +97,7 @@ class Renderer {
   float fireR0_ = 0, fireRStep_ = 1;
   float* fire_ = nullptr;  // rising: [kFireCells^2], radial: [kFireRadii][kFireAngles]
   float lidTop_[kSize], lidBot_[kSize];
+  bool halfRes_ = false;
 };
 
 }  // namespace eyes

@@ -60,6 +60,9 @@ int main(int argc, char** argv) {
     Renderer ren[2];
     ren[0].setCache(&cache);
     ren[1].setCache(&cache);
+    // HALFRES=1 previews the device's half-resolution shading.
+    ren[0].setHalfRes(getenv("HALFRES") != nullptr);
+    ren[1].setHalfRes(getenv("HALFRES") != nullptr);
     // Settle lids/pupils (and get past the first scheduled blink) before capturing.
     for (int i = 0; i < 64; ++i) ctl.update(0.05f);
     double renderMs = 0;
