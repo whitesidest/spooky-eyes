@@ -4,11 +4,13 @@
 #include <Preferences.h>
 #include <WiFi.h>
 #include <esp_random.h>
+#include <esp_cpu.h>
 #include <esp_timer.h>
 
 #include "board.h"
 #include "display.h"
 #include "render/controller.h"
+#include "render/noise.h"
 #include "render/renderer.h"
 
 namespace engine {
@@ -54,6 +56,9 @@ void changed() {
 
 // Per-eye timing totals (us) since the last log line: setup, shading, waiting on SPI.
 volatile uint32_t tBegin[2], tShade[2], tWait[2], tFrames[2];
+// Last logged per-frame averages (us) and the startup benchmark, for GET /api/debug.
+uint32_t lastBegin[2], lastShade[2], lastWait[2];
+String benchLog;
 
 void renderEye(int p) {
   int64_t t0 = esp_timer_get_time();
@@ -104,8 +109,12 @@ void benchThemes() {
     for (int y0 = 0; y0 < display::kHeight; y0 += display::kStripRows)
       ren[0]->renderRows(y0, y0 + display::kStripRows, strip, true);
     int64_t d = esp_timer_get_time();
-    Serial.printf("bench %-15s cache %5lld ms  begin %5lld ms  shade %5lld ms\n", t->id, (b - a) / 1000, (c - b) / 1000,
-                  (d - c) / 1000);
+    char line[96];
+    snprintf(line, sizeof line, "%s cache %lld begin %lld shade %lld ms", t->id, (b - a) / 1000, (c - b) / 1000,
+             (d - c) / 1000);
+    Serial.println(line);
+    benchLog += line;
+    benchLog += "\n";
   }
   cache->build(cfg.theme);
 }
@@ -201,6 +210,7 @@ void saveSettings() {
   prefs.putString("theme", cfg.theme->id);
   prefs.putString("mood", eyes::moodName(cfg.mood));
   prefs.putBool("auto", cfg.autonomous);
+  prefs.putString("name", name);
 }
 
 bool readUnit(JsonVariantConst v, float lo, float hi, float* out) {
@@ -250,6 +260,9 @@ void loop() {
       Serial.printf("  eye%d: begin %lu us  shade %lu us  spi-wait %lu us  (per frame, %lu frames)\n", p,
                     (unsigned long)(tBegin[p] / n), (unsigned long)(tShade[p] / n), (unsigned long)(tWait[p] / n),
                     (unsigned long)tFrames[p]);
+      lastBegin[p] = tBegin[p] / n;
+      lastShade[p] = tShade[p] / n;
+      lastWait[p] = tWait[p] / n;
       tBegin[p] = tShade[p] = tWait[p] = tFrames[p] = 0;
     }
   }
@@ -288,6 +301,14 @@ bool applyState(JsonVariantConst in, String* error) {
   if (!in["mood"].isNull()) {
     if (!eyes::moodFromName(in["mood"] | "", &next.mood)) return *error = "unknown mood", false;
   }
+  String newName;
+  bool hasName = !in["name"].isNull();
+  if (hasName) {
+    if (!in["name"].is<const char*>()) return *error = "name must be a string", false;
+    newName = in["name"].as<const char*>();
+    newName.trim();
+    if (newName.length() < 1 || newName.length() > 32) return *error = "name must be 1-32 characters", false;
+  }
   if (!in["autonomous"].isNull()) {
     if (!in["autonomous"].is<bool>()) return *error = "autonomous must be boolean", false;
     next.autonomous = in["autonomous"].as<bool>();
@@ -303,6 +324,7 @@ bool applyState(JsonVariantConst in, String* error) {
   }
 
   Guard g;
+  if (hasName) name = newName;
   cfg = next;
   ctl.setTheme(cfg.theme);
   ctl.setMood(cfg.mood);
@@ -342,6 +364,7 @@ bool applyAction(JsonVariantConst in, String* error) {
 
 void writeState(JsonObject out) {
   Guard g;
+  out["name"] = deviceName();
   out["on"] = cfg.on;
   out["brightness"] = cfg.brightness;
   out["theme"] = cfg.theme->id;
@@ -377,6 +400,36 @@ void writeInfo(JsonObject out) {
   }
   JsonArray moods = out["moods"].to<JsonArray>();
   for (int i = 0; i < eyes::kMoodCount; ++i) moods.add(eyes::moodName((eyes::Mood)i));
+}
+
+void writeDebug(JsonObject out) {
+  out["fps"] = fps;
+  out["theme"] = cfg.theme->id;
+  out["heap"] = ESP.getFreeHeap();
+  out["psram"] = ESP.getFreePsram();
+  JsonArray eyes = out["eyes"].to<JsonArray>();
+  for (int p = 0; p < 2; ++p) {
+    JsonObject e = eyes.add<JsonObject>();
+    e["begin_us"] = lastBegin[p];
+    e["shade_us"] = lastShade[p];
+    e["spi_wait_us"] = lastWait[p];
+  }
+  out["bench"] = benchLog;
+  out["cpu_mhz"] = getCpuFrequencyMhz();
+  // Calibration: cycles per dependent float multiply-add and per vnoise() call.
+  volatile float acc = 1.0f;
+  float x = acc;
+  uint32_t c0 = esp_cpu_get_cycle_count();
+  for (int i = 0; i < 100000; ++i) x = x * 0.99999f + 0.00001f;
+  uint32_t c1 = esp_cpu_get_cycle_count();
+  acc = x;
+  out["cycles_per_fma"] = (c1 - c0) / 100000.0f;
+  float n = 0;
+  c0 = esp_cpu_get_cycle_count();
+  for (int i = 0; i < 2000; ++i) n += eyes::vnoise(i * 0.37f, i * 0.11f, 1.3f);
+  c1 = esp_cpu_get_cycle_count();
+  acc = n;
+  out["cycles_per_vnoise"] = (c1 - c0) / 2000.0f;
 }
 
 uint32_t stateVersion() { return version; }

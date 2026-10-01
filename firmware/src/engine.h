@@ -13,6 +13,7 @@ bool applyState(JsonVariantConst in, String* error);
 bool applyAction(JsonVariantConst in, String* error);
 void writeState(JsonObject out);
 void writeInfo(JsonObject out);
+void writeDebug(JsonObject out);  // render timings + optional startup benchmark
 
 // Incremented whenever user-visible state changes (for push notifications).
 uint32_t stateVersion();

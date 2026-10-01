@@ -67,8 +67,15 @@ class Renderer {
     float r, g, b;
   };
   Col shade(int px, int py, float fx, float fy) const;
+  // Fast path: slide the baked static eyeball by the gaze and draw only the moving layers.
+  Col shadeFast(int px, int py, float fx, float fy) const;
+  void setupFrame(const EyeState& s);
+  void bake(const ThemeSpec* theme, bool mirror);
   void renderRowsHalf(int y0, int y1, uint16_t* out, bool byteSwap) const;
   float fireAt(float fx, float fy, float ux, float uy, float r) const;
+  float fireRadialAt(float a01, float r) const;
+  float fireGridAt(float fx, float fy, float r, const float* p, float tx, float ty) const;
+  float pupilEdgeAt(float dx, float dy, float r) const;
   void buildFireField();
 
   static constexpr int kFireGrid = 6;  // px per cell (rising fire)
@@ -77,7 +84,8 @@ class Renderer {
   static constexpr int kFireRadii = 32;
 
   const ThemeCache* cache_ = nullptr;
-  const ThemeSpec* t_ = nullptr;
+  const ThemeSpec* t_ = nullptr;  // points at themeCopy_ (RAM), not the flash table
+  ThemeSpec themeCopy_{};
   EyeState s_;
   float cx_ = 0, cy_ = 0;
   float squashX_ = 1, squashY_ = 1;
@@ -90,6 +98,8 @@ class Renderer {
   // Sub-eye cluster (spider): screen-space centres and scales for this eye.
   int clusterN_ = 0;
   float clusterX_[kMaxClusterEyes], clusterY_[kMaxClusterEyes], clusterS_[kMaxClusterEyes];
+  float clusterInvS_[kMaxClusterEyes], clusterInvS2_[kMaxClusterEyes];
+  float fireInvStep_ = 1, glowInvR2_ = 0;  // per-frame reciprocals (no divides per pixel)
   float sparkleK_[2];
   int swirlOffset_ = 0;
   bool hueOn_ = false;
@@ -98,6 +108,23 @@ class Renderer {
   float* fire_ = nullptr;  // rising: [kFireCells^2], radial: [kFireRadii][kFireAngles]
   float lidTop_[kSize], lidBot_[kSize];
   bool halfRes_ = false;
+
+  // Baked static layers (sclera, veins, rings, iris gradient + fibres, limbus) in eyeball space,
+  // one texel per 2x2 screen block, centred on the iris. Rebuilt when the theme changes.
+  struct Texel {
+    uint8_t r, g, b, iris;  // colour + iris coverage (for emissive dimming)
+    uint16_t ang, rad;      // polar position around the iris: angle (0..65535 = -pi..pi), radius * 64
+  };
+  static constexpr int kBaseMax = 192;
+  Texel* base_ = nullptr;
+  int baseN_ = 0;
+  float baseHalf_ = 0;
+  const ThemeSpec* bakedTheme_ = nullptr;
+  bool bakedMirror_ = false;
+  bool bakeMode_ = false;   // shade() stops after the static layers
+  bool fast_ = false;       // this frame uses shadeFast()
+  mutable float lastIrisA_ = 0;
+  float specInvA_ = 0, specInvB_ = 0;  // 1 / highlight radius^2
 };
 
 }  // namespace eyes

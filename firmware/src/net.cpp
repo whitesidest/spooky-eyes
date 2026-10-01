@@ -84,6 +84,11 @@ void setupRoutes() {
     engine::writeInfo(doc.to<JsonObject>());
     sendJson(req, 200, doc);
   });
+  server.on("/api/debug", HTTP_GET, [](AsyncWebServerRequest* req) {
+    JsonDocument doc;
+    engine::writeDebug(doc.to<JsonObject>());
+    sendJson(req, 200, doc);
+  });
   server.on("/api/state", HTTP_GET, [](AsyncWebServerRequest* req) {
     JsonDocument doc;
     engine::writeState(doc.to<JsonObject>());
