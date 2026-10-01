@@ -20,7 +20,7 @@ const Pair kDefaults[] = {
     {"terminator", "zap"},      {"robot", "zap"},          {"alien", "zap"},
     {"fireworks", "zap"},       {"hypnotic", "chime"},     {"rainbow", "chime"},
     {"frost", "chime"},         {"valentine", "chime"},    {"easter", "chime"},
-    {"st_patricks", "chime"},   {"anime", "chime"},
+    {"st_patricks", "chime"},   {"anime", "chime"},        {"witch", "whisper"},
 };
 
 }  // namespace
